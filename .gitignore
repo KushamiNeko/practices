@@ -1,0 +1,6 @@
+*.params
+*.pickle
+*.pyc
+resource
+check_points
+__pycache__
