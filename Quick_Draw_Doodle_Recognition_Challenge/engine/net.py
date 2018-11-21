@@ -2,30 +2,51 @@ import mxnet as mx
 from mxnet import gluon
 
 import config
+import os
 
 ###############################################################################
 
 
 class ConvNet():
 
-    def __init__(self):
-
-        self.net = None
+    def __init__(self,
+                 train: bool = True,
+                 hibridize: bool = True,
+                 initialize: bool = True,
+                 parameters_file: str = ""):
 
         self.simple_conv_net()
         # self.alex_net()
 
+        if initialize:
+            self.net.collect_params().initialize(
+                mx.init.Xavier(magnitude=2.24), ctx=config.CTX)
+        else:
+            if parameters_file:
+                assert (os.path.exists(parameters_file))
+                self.net.load_parameters(parameters_file, ctx=config.CTX)
+
+        if train:
+            self.trainer = gluon.Trainer(self.net.collect_params(), "sgd", {
+                "learning_rate": 0.001,
+            })
+
+        self.loss = gluon.loss.SoftmaxCrossEntropyLoss()
+        # self.loss = gluon.loss.L2Loss()
+
+        if hibridize:
+            self.net.hybridize()
+
+###############################################################################
+
+    def initialize(self):
         self.net.collect_params().initialize(
             mx.init.Xavier(magnitude=2.24), ctx=config.CTX)
 
-        self.trainer = gluon.Trainer(self.net.collect_params(), "sgd", {
-            "learning_rate": 0.001,
-        })
+###############################################################################
 
-        # self.softmax_cross_entropy = gluon.loss.SoftmaxCrossEntropyLoss()
-        self.loss = gluon.loss.L2Loss()
-
-        self.net.hybridize()
+    def load_parameters(self, parameters_file: str):
+        self.net.load_parameters(parameters_file, ctx=config.CTX)
 
 ###############################################################################
 
@@ -38,17 +59,13 @@ class ConvNet():
                 gluon.nn.Conv2D(
                     channels=96,
                     kernel_size=11,
-                    # strides=(4, 4),
                     strides=(1, 1),
                     activation="relu",
                 ))
-            self.net.add(
-                gluon.nn.MaxPool2D(
-                    # pool_size=3,
-                    # strides=2,
-                    pool_size=2,
-                    strides=2,
-                ))
+            self.net.add(gluon.nn.MaxPool2D(
+                pool_size=2,
+                strides=2,
+            ))
 
             self.net.add(
                 gluon.nn.Conv2D(
@@ -56,13 +73,10 @@ class ConvNet():
                     kernel_size=5,
                     activation="relu",
                 ))
-            self.net.add(
-                gluon.nn.MaxPool2D(
-                    # pool_size=3,
-                    # strides=2,
-                    pool_size=2,
-                    strides=2,
-                ))
+            self.net.add(gluon.nn.MaxPool2D(
+                pool_size=2,
+                strides=2,
+            ))
 
             self.net.add(
                 gluon.nn.Conv2D(
@@ -84,13 +98,10 @@ class ConvNet():
                     activation="relu",
                 ))
 
-            self.net.add(
-                gluon.nn.MaxPool2D(
-                    # pool_size=3,
-                    # strides=2,
-                    pool_size=2,
-                    strides=2,
-                ))
+            self.net.add(gluon.nn.MaxPool2D(
+                pool_size=2,
+                strides=2,
+            ))
 
             self.net.add(gluon.nn.Flatten())
 
@@ -102,17 +113,17 @@ class ConvNet():
                 4096,
                 activation="relu",
             ))
-            # self.net.add(gluon.nn.Dense(340))
-            self.net.add(gluon.nn.Dense(1))
+
+            self.net.add(gluon.nn.Dense(340))
+            # self.net.add(gluon.nn.Dense(1))
 
 ###############################################################################
 
     def simple_conv_net(self):
         self.net = gluon.nn.HybridSequential()
 
-        channels = 196
-
-        dense = 4096
+        channels = 144
+        dense = 2048
 
         with self.net.name_scope():
             self.net.add(
@@ -120,53 +131,21 @@ class ConvNet():
                     channels=channels, kernel_size=5, activation="relu"))
             self.net.add(gluon.nn.MaxPool2D(pool_size=2, strides=2))
 
-            # self.net.add(
-            # gluon.nn.Conv2D(channels=100, kernel_size=5, activation="relu"))
-
             self.net.add(
                 gluon.nn.Conv2D(
                     channels=channels, kernel_size=5, activation="relu"))
             self.net.add(gluon.nn.MaxPool2D(pool_size=2, strides=2))
-
-            # self.net.add(
-            # gluon.nn.Conv2D(channels=100, kernel_size=3, activation="relu"))
 
             self.net.add(
                 gluon.nn.Conv2D(
                     channels=channels, kernel_size=3, activation="relu"))
             self.net.add(gluon.nn.MaxPool2D(pool_size=2, strides=2))
 
-            # self.net.add(gluon.nn.Conv2D(channels=100, kernel_size=5))
-            # self.net.add(gluon.nn.BatchNorm(axis=1, center=True, scale=True))
-            # self.net.add(gluon.nn.Activation(activation="relu"))
-            # self.net.add(gluon.nn.MaxPool2D(pool_size=2, strides=2))
-
-            # self.net.add(gluon.nn.Conv2D(channels=100, kernel_size=5))
-            # self.net.add(gluon.nn.BatchNorm(axis=1, center=True, scale=True))
-            # self.net.add(gluon.nn.Activation(activation="relu"))
-            # self.net.add(gluon.nn.MaxPool2D(pool_size=2, strides=2))
-
-            # self.net.add(gluon.nn.Conv2D(channels=50, kernel_size=3))
-            # self.net.add(gluon.nn.BatchNorm(axis=1, center=True, scale=True))
-            # self.net.add(gluon.nn.Activation(activation="relu"))
-            # self.net.add(gluon.nn.MaxPool2D(pool_size=2, strides=2))
-
             self.net.add(gluon.nn.Flatten())
             self.net.add(gluon.nn.Dense(dense, activation="relu"))
             self.net.add(gluon.nn.Dense(dense, activation="relu"))
-            # self.net.add(gluon.nn.Dense(340))
-            self.net.add(gluon.nn.Dense(1))
-
-    # def evaluate_accuracy(csv_files):
-    # acc = mx.metric.Accuracy()
-    # for d, l in data_iterator:
-    # data = d.as_in_context(CTX)
-    # label = l.as_in_context(CTX)
-    # output = net(data)
-    # predictions = nd.argmax(output, axis=1)
-    # acc.update(preds=predictions, labels=label)
-
-    # return acc.get()[1]
+            self.net.add(gluon.nn.Dense(340))
+            # self.net.add(gluon.nn.Dense(1))
 
 
 ###############################################################################

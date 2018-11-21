@@ -30,7 +30,7 @@ def draw_strokes(strokes, size=config.SIZE, linewidth=4):
 ###############################################################################
 
 
-def train_data_extract(label_dictionary: preprocess.LabelDictionary):
+def train_data_extract(label_dictionary):
     for idx, f in enumerate(os.listdir(config.TRAIN_CSV_FILES)):
 
         df = pd.read_csv(os.path.join(config.TRAIN_CSV_FILES, f), dtype="str")
@@ -41,7 +41,7 @@ def train_data_extract(label_dictionary: preprocess.LabelDictionary):
             img[:, :, 0] = draw_strokes(s)
 
             index = label_dictionary.get_index_from_label(
-                label_dictionary.get_label_from_filename(f))
+                get_label_from_filepath(f))
 
             yield [img, index]
 
@@ -49,7 +49,15 @@ def train_data_extract(label_dictionary: preprocess.LabelDictionary):
 ###############################################################################
 
 
-def generator(csv_filepath: str, label_dictionary: preprocess.LabelDictionary):
+def get_label_from_filepath(filepath: str) -> str:
+    label = os.path.splitext(os.path.basename(filepath))[0].replace(" ", "_")
+    return label
+
+
+###############################################################################
+
+
+def generator(csv_filepath: str, label_dictionary):
     df = pd.read_csv(csv_filepath, dtype="str")
 
     for s in df["drawing"]:
@@ -57,7 +65,8 @@ def generator(csv_filepath: str, label_dictionary: preprocess.LabelDictionary):
         img[:, :, 0] = draw_strokes(s)
 
         index = label_dictionary.get_index_from_label(
-            label_dictionary.get_label_from_filename(csv_filepath))
+            get_label_from_filepath(csv_filepath))
+        # label_dictionary.get_label_from_filename(csv_filepath))
 
         yield [img, index]
 

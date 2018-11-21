@@ -1,6 +1,8 @@
 *.params
 *.pickle
 *.pyc
+*.json
+.mypy_cache
 resource
 check_points
 __pycache__

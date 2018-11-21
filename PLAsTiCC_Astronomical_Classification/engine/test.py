@@ -1,4 +1,5 @@
 import pandas as pd
+from scipy import stats
 
 import os
 
@@ -23,10 +24,26 @@ assert (os.path.exists(TEST_METADATA_CSV))
 f = pd.read_csv(TRAIN_CSV)
 fm = pd.read_csv(TRAIN_METADATA_CSV)
 
-t = f.loc[f["object_id"] == 615]
+aggs = {
+    # "mjd": ["min", "max", "size"],
+    "passband": ["min", "max", "mean", "median", "std", "sum", "skew"],
+    "flux": ["min", "max", "mean", "median", "std", "skew"],
+    "flux_err": ["min", "max", "mean", "median", "std", "skew"],
+    "detected": ["mean", "median", "sum", "skew"],
+    # "flux_ratio_sq": ["sum", "skew"],
+    # "flux_by_flux_ratio_sq": ["sum", "skew"],
+}
 
-print(f.head())
-print(t["flux"].mean())
+fagg = f.groupby("object_id").agg(aggs)
+new_columns = [k + "_" + agg for k in aggs.keys() for agg in aggs[k]]
+fagg.columns = new_columns
 
-# print(t.median())
-# print(t.loc[t["passband"] == 0])
+df_train = fagg.reset_index().merge(right=fm, on="object_id", how="outer")
+
+# id_label = df_train[["object_id", "target"]]
+
+print(df_train.head())
+# print(fm.groupby("target"))
+# print(df_train.iloc[0])
+# print(df_train.iloc[0].drop("object_id").values)
+# print(id_label.head())
