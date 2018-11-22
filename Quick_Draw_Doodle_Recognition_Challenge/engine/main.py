@@ -13,17 +13,90 @@ import net
 ###############################################################################
 
 
-def total_training():
+def total_training_dense_net():
+
+    print("\nDense Net\n")
+
+    start = 0
 
     dictionary = preprocess.LabelDictionary()
 
-    conv_net = net.ConvNet(train=True, hibridize=True, initialize=True)
+    dense_net = net.DenseNet(train=True, hibridize=True, initialize=True)
+
+    for e in range(start + 1, config.EPOCHCS):
+
+        # generator = helper.train_data_extract(dictionary)
+        generator = helper.train_data_extract_limit(dictionary)
+
+        print("============================================================")
+
+        print("epochs: %d" % (e))
+
+        print("============================================================")
+
+        print()
+
+        looping = True
+        while looping:
+            imgs = []
+            labels = []
+
+            for _ in range(config.BATCH_SIZE):
+                try:
+                    x, y = next(generator)
+                    imgs.append(x)
+                    labels.append(y)
+                except StopIteration:
+                    looping = False
+                    break
+
+            if len(imgs) == 0 or len(labels) == 0:
+                looping = False
+                break
+
+            nd_data = nd.array(imgs)
+            nd_labels = nd.array(labels)
+
+            nd_data = nd.flatten(nd_data)
+
+            nd_data = nd_data.as_in_context(config.CTX)
+            nd_labels = nd_labels.as_in_context(config.CTX)
+
+            with autograd.record():
+                output = dense_net.net(nd_data)
+                loss = dense_net.loss(output, nd_labels)
+
+            loss.backward()
+            dense_net.trainer.step(nd_data.shape[0])
+
+            loss_mean = nd.mean(loss).asscalar()
+
+            print("Loss: {}".format(loss_mean))
+
+        dense_net.net.save_parameters(
+            "check_points/four_attemp/{}.params".format(e))
+
+
+###############################################################################
+
+
+def total_training():
+
+    start = 96
+
+    dictionary = preprocess.LabelDictionary()
+
+    conv_net = net.ConvNet(
+        train=True,
+        hibridize=True,
+        initialize=False,
+        parameters_file="check_points/third_attemp/{}.params".format(start))
 
     # conv_net.load_parameters("check_points/third_attemp/1.params")
 
     # losses = []
 
-    for e in range(config.EPOCHCS):
+    for e in range(start + 1, config.EPOCHCS):
 
         # generator = helper.train_data_extract(dictionary)
         generator = helper.train_data_extract_limit(dictionary)
@@ -172,6 +245,6 @@ def separation_training():
 ###############################################################################
 
 if __name__ == "__main__":
-    total_training()
+    total_training_dense_net()
 
 ###############################################################################

@@ -2,9 +2,23 @@ import os
 
 import pandas as pd
 import numpy as np
+import cv2
 
 import config
 import helper
+import preprocess
+
+dictionary = preprocess.LabelDictionary()
+
+generator = helper.train_data_extract_limit(dictionary)
+
+x, y = next(generator)
+x, y = next(generator)
+
+print(dictionary.get_label_from_index(y))
+cv2.imshow('image', x)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
 
 # for idx, file in enumerate(os.listdir(config.TRAIN_CSV_FILES)):
 
@@ -62,24 +76,24 @@ import helper
 
 # yield [img, index]
 
-df = pd.read_csv(config.TEST_CSV_FILE, dtype="str")
+# df = pd.read_csv(config.TEST_CSV_FILE, dtype="str")
 
-# print(df[["key_id", "drawing"]].head(1))
+# # print(df[["key_id", "drawing"]].head(1))
 
-i = 0
-for k, s in df[["key_id", "drawing"]].values:
-    print(s)
-    i += 1
+# i = 0
+# for k, s in df[["key_id", "drawing"]].values:
+# print(s)
+# i += 1
 
-    if i > 1:
-        break
+# if i > 1:
+# break
 
-i = 0
-for s in df["drawing"]:
-    print(s)
-    i += 1
-    if i > 1:
-        break
-    # print(s)
+# i = 0
+# for s in df["drawing"]:
+# print(s)
+# i += 1
+# if i > 1:
+# break
+# print(s)
 # img = np.zeros((config.RESIZE, config.RESIZE, 1), np.float32)
 # img[:, :, 0] = helper.draw_strokes(s)
