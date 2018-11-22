@@ -14,11 +14,13 @@ TEST_CSV_FILE: str = os.path.join(ROOT, COMPETIION, "all/test_simplified.csv")
 
 SIZE: int = 256
 
-RESIZE: int = 56
+RESIZE: int = 224
 
-BATCH_SIZE: int = 64
+BATCH_SIZE: int = 256
 
-EPOCHCS: int = 20
+TRAIN_SAMPLES_LIMIT: int = 32
+
+EPOCHCS: int = 500
 
 ###############################################################################
 

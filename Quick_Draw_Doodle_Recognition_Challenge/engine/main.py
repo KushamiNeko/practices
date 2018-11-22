@@ -19,11 +19,14 @@ def total_training():
 
     conv_net = net.ConvNet(train=True, hibridize=True, initialize=True)
 
+    # conv_net.load_parameters("check_points/third_attemp/1.params")
+
     # losses = []
 
     for e in range(config.EPOCHCS):
 
-        generator = helper.train_data_extract(dictionary)
+        # generator = helper.train_data_extract(dictionary)
+        generator = helper.train_data_extract_limit(dictionary)
 
         print("============================================================")
 
@@ -73,7 +76,7 @@ def total_training():
             print("Loss: {}".format(loss_mean))
 
         conv_net.net.save_parameters(
-            "check_points/second_attemp/{}.params".format(e))
+            "check_points/third_attemp/{}.params".format(e))
 
         # print("EPOCHCS: {}, loss mean: {}".format(
         # e, nd.mean(nd.array(losses).asscalar())))

@@ -1,9 +1,9 @@
-import mxnet as mx
+# import mxnet as mx
 from mxnet import nd
 import numpy as np
 import pandas as pd
 
-import typing
+from typing import List, Dict
 
 import os
 import csv
@@ -49,74 +49,82 @@ def return_keys(x):
 
 if __name__ == "__main__":
 
-    classification: typing.List[typing.Dict[str, float]] = []
+    classification: List[Dict[str, float]] = []
 
     dictionary = preprocess.LabelDictionary()
 
     files = os.listdir(config.TRAIN_CSV_FILES)
 
-    conv_net = net.ConvNet(train=False, initialize=False, hibridize=True)
+    conv_net = net.ConvNet(train=False, initialize=False, hibridize=False)
 
-    generator = test_generator()
-    # generator = helper.train_data_extract(dictionary)
+    conv_net.load_parameters("check_points/second_attemp/0.params")
+
+    # generator = test_generator()
+    generator = helper.train_data_extract(dictionary)
 
     while True:
         try:
-            key, x = next(generator)
-            # x, y = next(generator)
+            # key, x = next(generator)
+            x, y = next(generator)
         except StopIteration:
             print("end of the test file")
             exit(0)
 
         nd_data = nd.array([x])
-        nd_labels = nd.array([0])
+        # nd_labels = nd.array([0])
 
         nd_data = nd.transpose(nd_data, (0, 3, 1, 2))
 
         nd_data = nd_data.as_in_context(config.CTX)
-        nd_labels = nd_labels.as_in_context(config.CTX)
+        # nd_labels = nd_labels.as_in_context(config.CTX)
 
-        for f in os.listdir(config.TRAIN_CSV_FILES):
-            label = helper.get_label_from_filepath(f)
-            params = os.path.join("check_points/separate_training",
-                                  "{}_1.params".format(label))
+        # for f in os.listdir(config.TRAIN_CSV_FILES):
+        # label = helper.get_label_from_filepath(f)
+        # params = os.path.join("check_points/separate_training",
+        # "{}_1.params".format(label))
 
-            conv_net.load_parameters(params)
-            # conv_net = net.ConvNet(
-            # parameters_file=params,
-            # train=False,
-            # initialize=False,
-            # hibridize=False)
+        # conv_net.load_parameters(params)
+        # conv_net = net.ConvNet(
+        # parameters_file=params,
+        # train=False,
+        # initialize=False,
+        # hibridize=False)
 
-            # with autograd.record():
-            output = conv_net.net(nd_data)
-            loss = conv_net.loss(output, nd_labels)
+        # with autograd.record():
+        output = conv_net.net(nd_data)
+        probability = nd.argmax(output, axis=1)
+        # loss = conv_net.loss(output, nd_labels)
 
-            # print(loss.asscalar())
+        print(dictionary.get_label_from_index(y))
+        print(probability)
+        break
 
-            classification.append({label: loss.asscalar()})
+        # print(loss.asscalar())
 
-            # if label == "calculator":
-            # break
+        # classification.append({label: loss.asscalar()})
+        # classification.append({label: loss.asscalar()})
 
-        classification.sort(key=return_value)
+        # if label == "calculator":
+        # break
+
+        # classification.sort(key=return_value)
 
         # print(dictionary.get_label_from_index(y))
         # print(classification)
 
-        with open("classification.csv", "a", newline="") as csvfile:
-            writter = csv.writer(
-                csvfile,
-                delimiter=',',
-                # quotechar=',',
-                quoting=csv.QUOTE_MINIMAL)
-            writter.writerow([
-                key, " ".join([
-                    return_keys(classification[0]),
-                    return_keys(classification[1]),
-                    return_keys(classification[2])
-                ])
-            ])
+        # with open("classification.csv", "a", newline="") as csvfile:
+        # writter = csv.writer(
+        # csvfile,
+        # delimiter=',',
+        # # quotechar=',',
+        # quoting=csv.QUOTE_MINIMAL)
+        # writter.writerow([
+        # key, " ".join([
+        # return_keys(classification[0]),
+        # return_keys(classification[1]),
+        # return_keys(classification[2])
+        # ])
+        # ])
 
         # break
 
