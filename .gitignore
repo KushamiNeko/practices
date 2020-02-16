@@ -6,3 +6,5 @@
 resource
 check_points
 __pycache__
+env
+*_cache
