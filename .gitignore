@@ -1,10 +1,13 @@
 *.params
+*.ttf
 *.pickle
 *.pyc
+*.csv
+*.txt
 *.json
 .mypy_cache
 resource
 check_points
 __pycache__
 env
-*_cache
+*_cache*

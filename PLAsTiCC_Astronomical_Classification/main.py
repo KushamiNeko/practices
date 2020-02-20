@@ -1,12 +1,13 @@
 import pickle
 
-import config
 import pandas as pd
-import preprocess
-import split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
+
+import config
+import preprocess
+import split
 
 if __name__ == "__main__":
 
@@ -15,9 +16,9 @@ if __name__ == "__main__":
 
     X, y, encoder = preprocess.preprocess(df, dfm)
 
-    # X_train, X_valid, y_train, y_valid = train_test_split(
-    # X, y, train_size=0.8, test_size=0.2,
-    # )
+    X_train, X_valid, y_train, y_valid = train_test_split(
+    X, y, train_size=0.8, test_size=0.2,
+    )
 
     model = RandomForestClassifier(n_estimators=5000, criterion="gini", n_jobs=8,)
 
