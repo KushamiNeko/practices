@@ -1,7 +1,9 @@
 import gc
+import re
 import json
 import math
 import tkinter
+import seaborn as sns
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -206,6 +208,7 @@ class MyApp:
         self._root.grid_rowconfigure(1, weight=35)
         self._root.grid_rowconfigure(2, weight=1)
         self._root.grid_rowconfigure(3, weight=1)
+        self._root.grid_rowconfigure(4, weight=1)
 
         self._src = SearchField(self._root, 0, 0, "src")
         self._tar = SearchField(self._root, 1, 0, "tar")
@@ -257,12 +260,29 @@ class MyApp:
         self._tau_var.set("TAU:")
 
         self._plot_button = tkinter.Button(
-            self._root, text="plot", height=2, command=lambda: self._plot_chart(),
+            self._root,
+            text="plot group",
+            height=2,
+            command=lambda: self._plot_chart(chart_type="g"),
         )
 
         self._plot_button.grid(
             column=0,
             row=3,
+            columnspan=2,
+            sticky=tkinter.W + tkinter.E + tkinter.S + tkinter.N,
+        )
+
+        self._plot_button = tkinter.Button(
+            self._root,
+            text="plot correlation",
+            height=2,
+            command=lambda: self._plot_corr(chart_type="c"),
+        )
+
+        self._plot_button.grid(
+            column=0,
+            row=4,
             columnspan=2,
             sticky=tkinter.W + tkinter.E + tkinter.S + tkinter.N,
         )
@@ -313,15 +333,17 @@ class MyApp:
                 self._p_var.set("P: {}".format(str(p)))
                 self._tau_var.set("TAU: {}".format(str(tau)))
 
-    def _plot_chart(self):
-        src = self._src.selected
-        tar = self._tar.selected
+    def _plot_chart(self, chart_type="g"):
 
-        x = self._df[tar]
-        y = self._df[src]
+        assert chart_type in ("g", "c")
+        # src = self._src.selected
+        # tar = self._tar.selected
 
-        s, i, _, _, _ = stats.linregress(x, y)
-        xl = np.linspace(x.min(), x.max())
+        # x = self._df[tar]
+        # y = self._df[src]
+
+        # s, i, _, _, _ = stats.linregress(x, y)
+        # xl = np.linspace(x.min(), x.max())
 
         win = tkinter.Toplevel()
         win.wm_title("plot")
@@ -330,13 +352,18 @@ class MyApp:
         win.protocol("WM_DELETE_WINDOW", lambda: self._clear_plot(win, fig, ax))
         win.bind("<Escape>", lambda event: self._clear_plot(win, fig, ax))
 
-        ax.scatter(x, y, s=40, color="k")
-        ax.plot(xl, xl * s + i, color="k")
+        if chart_type == "g":
+            self._plot_group(ax=ax)
+        elif chart_type == "c":
+            self._plot_corr(ax=ax)
 
-        prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=12)
+        # ax.scatter(x, y, s=40, color="k")
+        # ax.plot(xl, xl * s + i, color="k")
 
-        ax.set_xlabel(tar, fontproperties=prop)
-        ax.set_ylabel(src, fontproperties=prop)
+        # prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=12)
+
+        # ax.set_xlabel(tar, fontproperties=prop)
+        # ax.set_ylabel(src, fontproperties=prop)
 
         fig.tight_layout()
 
@@ -355,6 +382,159 @@ class MyApp:
     @property
     def window(self):
         return self._window
+
+    def _plot_group(
+        self,
+        ax=None,
+        point_size=6,
+        linelength=0.7,
+        linewidth=2,
+        title="",
+        title_len_limit=50,
+        title_size=14,
+    ):
+
+        prop = fm.FontProperties(
+            fname="fonts/Kosugi/Kosugi-Regular.ttf", size=title_size
+        )
+
+        col = self._src.selected
+
+        vs = pd.DataFrame(
+            {
+                # "0W": base_set[col].astype(np.float),
+                # "6W": middle_set[col].astype(np.float),
+                # "12W": final_set[col].astype(np.float),
+                "0W": self._df[self._df["measure"] == "0W"][col].astype(np.float),
+                "6W": self._df[self._df["measure"] == "6W"][col].astype(np.float),
+                "12W": self._df[self._df["measure"] == "12W"][col].astype(np.float),
+            }
+        )
+
+        if title != "":
+            if len(title) <= title_len_limit:
+                plt.title(title, fontproperties=prop)
+            else:
+                plt.title(title[:title_len_limit] + "...", fontproperties=prop)
+
+        if ax is None:
+            plt.plot(
+                [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
+                [vs["0W"].mean(), vs["0W"].mean()],
+                color="k",
+                linewidth=linewidth,
+            )
+            plt.plot(
+                [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
+                [vs["6W"].mean(), vs["6W"].mean()],
+                color="k",
+                linewidth=linewidth,
+            )
+            plt.plot(
+                [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
+                [vs["12W"].mean(), vs["12W"].mean()],
+                color="k",
+                linewidth=linewidth,
+            )
+            sns.swarmplot(data=vs, color="k", ax=ax, size=point_size)
+        else:
+            ax.plot(
+                [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
+                [vs["0W"].mean(), vs["0W"].mean()],
+                color="k",
+                linewidth=linewidth,
+            )
+            ax.plot(
+                [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
+                [vs["6W"].mean(), vs["6W"].mean()],
+                color="k",
+                linewidth=linewidth,
+            )
+            ax.plot(
+                [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
+                [vs["12W"].mean(), vs["12W"].mean()],
+                color="k",
+                linewidth=linewidth,
+            )
+            sns.swarmplot(data=vs, color="k", size=point_size)
+
+    def _plot_corr(
+        self, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50,
+    ):
+        prop = fm.FontProperties(
+            fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize
+        )
+
+        coly = self._src.selected
+        colx = self._tar.selected
+
+        # xs = base_set[colx].append(middle_set[colx]).append(final_set[colx])
+        # ys = base_set[coly].append(middle_set[coly]).append(final_set[coly])
+        xs = self._df[colx]
+        ys = self._df[coly]
+
+        s, i, _, _, _ = stats.linregress(xs.values, ys.values)
+        xl = np.linspace(xs.min(), xs.max())
+
+        if ax is None:
+            plt.scatter(xs.values, ys.values, s=pointsize, color="k")
+            plt.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+            if len(colx) > label_len_limit:
+                plt.xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
+            else:
+                plt.xlabel(colx, fontproperties=prop)
+
+            if len(coly) > label_len_limit:
+                plt.ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
+            else:
+                plt.ylabel(coly, fontproperties=prop)
+
+        else:
+            ax.scatter(xs.values, ys.values, s=pointsize, color="k")
+            ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+            if len(colx) > label_len_limit:
+                ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
+            else:
+                ax.set_xlabel(colx, fontproperties=prop)
+
+            if len(coly) > label_len_limit:
+                ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
+            else:
+                ax.set_ylabel(coly, fontproperties=prop)
+
+
+def drop_append(cols, drop_1, drop_2, drop_3):
+    drop_1.append(cols[1])
+    drop_1.append(cols[2])
+
+    drop_2.append(cols[0])
+    drop_2.append(cols[2])
+
+    drop_3.append(cols[0])
+    drop_3.append(cols[1])
+
+
+def rename_columns(data):
+    regex = re.compile(r"(^.+)([-_]\d{1})(.*)$", re.MULTILINE)
+    new_cols = []
+
+    for col in data.columns:
+        match = regex.match(col)
+        if match is not None:
+            new_cols.append(f"{match.group(1)}{match.group(3)}")
+        else:
+            new_cols.append(col)
+
+    data.columns = new_cols
+
+
+def test_column_pair(cols):
+    assert len(cols) == 3
+    for j in cols:
+        for k in cols:
+            assert j.startswith(k[:3])
 
 
 if __name__ == "__main__":
@@ -377,6 +557,35 @@ if __name__ == "__main__":
     print("testing dataframe.....")
 
     test_data_na(df)
+
+    drop_1 = []
+    drop_2 = []
+    drop_3 = []
+
+    cols = []
+
+    # start of the 3-set columns
+    # df.columns[17]
+
+    for i, col in enumerate(df.columns[17:]):
+        if i != 0 and i % 3 == 0:
+            test_column_pair(cols)
+            drop_append(cols, drop_1, drop_2, drop_3)
+
+            cols = [col]
+        else:
+            cols.append(col)
+
+    test_column_pair(cols)
+    drop_append(cols, drop_1, drop_2, drop_3)
+
+    base_set = df.drop(drop_1, axis=1)
+    middle_set = df.drop(drop_2, axis=1)
+    final_set = df.drop(drop_3, axis=1)
+
+    rename_columns(base_set)
+    rename_columns(middle_set)
+    rename_columns(final_set)
 
     print("ready to launch the program.....")
 

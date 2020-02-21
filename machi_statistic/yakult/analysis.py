@@ -1,4 +1,6 @@
 # %%
+import json
+import math
 import re
 
 import matplotlib.pyplot as plt
@@ -684,7 +686,220 @@ with open("reports/significant_summary.txt", "w") as f:
 
 # %%
 
-len(corr_significant_features_strict)
+
+def plot_group(
+    col,
+    ax=None,
+    point_size=6,
+    linelength=0.7,
+    linewidth=2,
+    title="",
+    title_len_limit=50,
+    title_size=14,
+):
+
+    prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=title_size)
+
+    vs = pd.DataFrame(
+        {
+            "0W": base_set[col].astype(np.float),
+            "6W": middle_set[col].astype(np.float),
+            "12W": final_set[col].astype(np.float),
+        }
+    )
+
+    if title != "":
+        if len(title) <= title_len_limit:
+            plt.title(title, fontproperties=prop)
+        else:
+            plt.title(title[:title_len_limit] + "...", fontproperties=prop)
+
+    if ax is None:
+        plt.plot(
+            [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
+            [vs["0W"].mean(), vs["0W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        plt.plot(
+            [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
+            [vs["6W"].mean(), vs["6W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        plt.plot(
+            [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
+            [vs["12W"].mean(), vs["12W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        sns.swarmplot(data=vs, color="k", ax=ax, size=point_size)
+    else:
+        ax.plot(
+            [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
+            [vs["0W"].mean(), vs["0W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        ax.plot(
+            [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
+            [vs["6W"].mean(), vs["6W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        ax.plot(
+            [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
+            [vs["12W"].mean(), vs["12W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        sns.swarmplot(data=vs, color="k", size=point_size)
+
+
+def plot_corr(
+    colx, coly, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50
+):
+    prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize)
+
+    xs = base_set[colx].append(middle_set[colx]).append(final_set[colx])
+    ys = base_set[coly].append(middle_set[coly]).append(final_set[coly])
+
+    s, i, _, _, _ = stats.linregress(xs.values, ys.values)
+    xl = np.linspace(xs.min(), xs.max())
+
+    if ax is None:
+        plt.scatter(xs.values, ys.values, s=pointsize, color="k")
+        plt.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+        if len(colx) > label_len_limit:
+            plt.xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
+        else:
+            plt.xlabel(colx, fontproperties=prop)
+
+        if len(coly) > label_len_limit:
+            plt.ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
+        else:
+            plt.ylabel(coly, fontproperties=prop)
+
+    else:
+        ax.scatter(xs.values, ys.values, s=pointsize, color="k")
+        ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+        if len(colx) > label_len_limit:
+            ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
+        else:
+            ax.set_xlabel(colx, fontproperties=prop)
+
+        if len(coly) > label_len_limit:
+            ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
+        else:
+            ax.set_ylabel(coly, fontproperties=prop)
+
+
+# %%
+
+# statistic = {}
+
+# progress = 0.0
+# works = float(len(base_set.columns) * len(base_set.columns))
+
+# progress_report = 2
+
+# for x in base_set.columns:
+
+#     if statistic.get(x, None) is None:
+#         statistic[x] = {}
+
+#     for y in base_set.columns:
+
+#         tau, p_value = correlation(x, y)
+
+#         if math.isnan(tau) or math.isnan(p_value):
+#             pass
+
+#         progress += 1
+
+#         if progress % progress_report == 0:
+#             print("{}%.....".format(round((progress / works) * 100.0, 4)))
+
+#         if statistic[x].get(y, None) is None:
+#             statistic[x][y] = {}
+
+#         statistic[x][y] = {
+#             "p": str(p_value),
+#             "tau": str(tau),
+#         }
+
+
+# with open("statistic_new.json", "w") as output:
+#     json.dump(statistic, output, indent=2)
+
+
+# %%
+
+# plot_w("HAMD")
+# plot_corr("Weight", "BMI")
+
+intersection = (
+    set(r[0] for r in report_multiple)
+    .intersection(set(r[0] for r in report_pair_bf))
+    .intersection(
+        set(r[0] for r in corr_significant_features).union(
+            set(r[1] for r in corr_significant_features)
+        )
+    )
+)
+
+for col in intersection:
+    f, ax = plt.subplots(figsize=(10, 10))
+    plot_group(col, ax=ax, title=col)
+
+    plt.tight_layout()
+    f.savefig(f"charts/group/{col.replace('/', '_')}.png", facecolor="w")
+    plt.close(f)
+
+
+repeated = set()
+for colx in intersection:
+    for coly in intersection:
+        if colx == coly:
+            continue
+
+        if f"{colx}_{coly}" in repeated or f"{coly}_{colx}" in repeated:
+            continue
+
+        f, ax = plt.subplots(figsize=(10, 10))
+        plot_corr(colx, coly, ax=ax, pointsize=35)
+
+        plt.tight_layout()
+        f.savefig(
+            f"charts/corr/{colx.replace('/', '_')}_X_{coly.replace('/', '_')}.png",
+            facecolor="w",
+        )
+        plt.close(f)
+
+        repeated.add(f"{colx}_{coly}")
+
+# %%
+
+for r in set(r[0] for r in report_pair_bm):
+    if r not in set(r[0] for r in report_multiple):
+        print(r)
+
+print()
+
+for r in set(r[0] for r in report_pair_bf):
+    if r not in set(r[0] for r in report_multiple):
+        print(r)
+
+# %%
+
+# ndf = base_set.append(middle_set).append(final_set)
+# ndf = ndf.reset_index(drop=True)
+# ndf
+# base_set["HAMD"]
+# middle_set["HAMD"]
+# final_set["HAMD"]
 # %%
 Y = [
     "HAMD",
@@ -723,50 +938,6 @@ for feature in significant_features:
 
 
 # %%
-
-
-def plot_diff(col, point_size=8, ax=None):
-    hamd = pd.DataFrame(
-        {
-            "0W": base_set[col].astype(np.float),
-            "6W": middle_set[col].astype(np.float),
-            "12W": final_set[col].astype(np.float),
-        }
-    )
-
-    # print(col)
-    # plt.title(col)
-    if ax is not None:
-        # sns.boxplot(data=hamd, whis=np.inf, color=".9", ax=ax)
-        # sns.boxplot(data=hamd, color=".9", ax=ax)
-        sns.swarmplot(data=hamd, color="k", ax=ax, size=point_size)
-    else:
-        # sns.boxplot(data=hamd, whis=np.inf, color=".9")
-        # sns.boxplot(data=hamd, color=".9")
-        sns.swarmplot(data=hamd, color="k", size=point_size)
-
-
-def plot_compare(y, feature):
-    ys = pd.DataFrame(
-        {
-            "0W": base_set[y].astype(np.float),
-            "6W": middle_set[y].astype(np.float),
-            "12W": final_set[y].astype(np.float),
-        }
-    )
-
-    fs = pd.DataFrame(
-        {
-            "0W": base_set[feature].astype(np.float),
-            "6W": middle_set[feature].astype(np.float),
-            "12W": final_set[feature].astype(np.float),
-        }
-    )
-
-    print(feature)
-    # sns.boxplot(data=hamd, whis=np.inf, color=".9")
-    sns.swarmplot(data=ys, color="r")
-    sns.swarmplot(data=fs, color="g")
 
 
 # %%

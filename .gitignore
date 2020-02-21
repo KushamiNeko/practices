@@ -2,6 +2,9 @@
 *.ttf
 *.pickle
 *.pyc
+*.zip
+*.jpg
+*.png
 *.csv
 *.txt
 *.json
