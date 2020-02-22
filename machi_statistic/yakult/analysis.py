@@ -3,6 +3,7 @@ import json
 import math
 import re
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,6 +14,9 @@ from scipy import linalg
 from statsmodels.stats import multitest
 
 from preprocess import clean_data, test_data_na
+
+matplotlib.use("gtk3agg")
+
 
 # %%
 df = pd.read_csv("data.csv")
@@ -237,13 +241,16 @@ for col in base_set.columns:
     if p <= 0.05:
         time_significant_features_multiple.append(col)
 
-        report_multiple.append([col, p])
+        # report_multiple.append([col, p])
+        report_multiple.append([col, round(p, 3)])
 
     bmp, bfp = significant_test_pair(col)
     if bmp <= 0.05:
-        report_pair_bm.append([col, bmp])
+        # report_pair_bm.append([col, bmp])
+        report_pair_bm.append([col, round(bmp, 3)])
     if bfp <= 0.05:
-        report_pair_bf.append([col, bfp])
+        # report_pair_bf.append([col, bfp])
+        report_pair_bf.append([col, round(bfp, 3)])
     if bmp <= 0.05 or bfp <= 0.05:
         time_significant_features_pair.append(col)
 
@@ -270,9 +277,13 @@ for x in base_set.drop(drops, axis=1).columns:
 
         tau, p = correlation(x, y)
         if p <= 0.05:
-            corr_significant_features.append((x, y, p, tau))
+            # corr_significant_features.append((x, y, p, tau))
+            corr_significant_features.append((x, y, round(p, 3), round(tau, 2)))
             if abs(tau) >= 0.2:
-                corr_significant_features_strict.append((x, y, p, tau))
+                # corr_significant_features_strict.append((x, y, p, tau))
+                corr_significant_features_strict.append(
+                    (x, y, round(p, 3), round(tau, 2))
+                )
 
         repeated.add(f"{x}_{y}")
 
@@ -708,6 +719,24 @@ def plot_group(
         }
     )
 
+    bmp, bfp = significant_test_pair(col)
+
+    maxy = max(
+        base_set[col].astype(np.float).max(),
+        middle_set[col].astype(np.float).max(),
+        final_set[col].astype(np.float).max(),
+    )
+
+    miny = min(
+        base_set[col].astype(np.float).min(),
+        middle_set[col].astype(np.float).min(),
+        final_set[col].astype(np.float).min(),
+    )
+
+    ry = maxy - miny
+
+    ryratio = 0.3
+
     if title != "":
         if len(title) <= title_len_limit:
             plt.title(title, fontproperties=prop)
@@ -715,45 +744,61 @@ def plot_group(
             plt.title(title[:title_len_limit] + "...", fontproperties=prop)
 
     if ax is None:
-        plt.plot(
-            [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
-            [vs["0W"].mean(), vs["0W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        plt.plot(
-            [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
-            [vs["6W"].mean(), vs["6W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        plt.plot(
-            [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
-            [vs["12W"].mean(), vs["12W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        sns.swarmplot(data=vs, color="k", ax=ax, size=point_size)
-    else:
-        ax.plot(
-            [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
-            [vs["0W"].mean(), vs["0W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        ax.plot(
-            [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
-            [vs["6W"].mean(), vs["6W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        ax.plot(
-            [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
-            [vs["12W"].mean(), vs["12W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        sns.swarmplot(data=vs, color="k", size=point_size)
+        ax = plt.gca()
+
+    ax.set_ylim(top=maxy + (ry * ryratio), bottom=miny - (ry * (ryratio / 2.0)))
+
+    ty = maxy + (ry * 0.1)
+
+    ax.plot(
+        [0, 1], [ty, ty], color="k", linewidth=linewidth / 1.5,
+    )
+
+    ax.text(
+        0.5,
+        ty,
+        s=f"P: {round(bmp, 3):.3f}",
+        color="k",
+        ha="center",
+        va="bottom",
+        fontproperties=prop,
+    )
+
+    ty = maxy + (ry * 0.2)
+
+    ax.plot(
+        [0, 2], [ty, ty], color="k", linewidth=linewidth / 1.5,
+    )
+
+    ax.text(
+        1,
+        ty,
+        s=f"P: {round(bfp, 3):.3f}",
+        color="k",
+        ha="center",
+        va="bottom",
+        fontproperties=prop,
+    )
+
+    ax.plot(
+        [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
+        [vs["0W"].mean(), vs["0W"].mean()],
+        color="k",
+        linewidth=linewidth,
+    )
+    ax.plot(
+        [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
+        [vs["6W"].mean(), vs["6W"].mean()],
+        color="k",
+        linewidth=linewidth,
+    )
+    ax.plot(
+        [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
+        [vs["12W"].mean(), vs["12W"].mean()],
+        color="k",
+        linewidth=linewidth,
+    )
+    sns.swarmplot(data=vs, color="k", size=point_size)
 
 
 def plot_corr(
@@ -764,36 +809,81 @@ def plot_corr(
     xs = base_set[colx].append(middle_set[colx]).append(final_set[colx])
     ys = base_set[coly].append(middle_set[coly]).append(final_set[coly])
 
+    maxy = ys.max()
+    miny = ys.min()
+
+    ry = maxy - miny
+    ryratio = 0.2
+
+    tau, p = correlation(colx, coly)
+
+    tx = xs.max()
+    ha = "right"
+    if (
+        ys[xs < ((xs.max() + xs.min()) / 2.0)].max()
+        < ys[xs > ((xs.max() + xs.min()) / 2.0)].max()
+    ):
+        tx = xs.min()
+        ha = "left"
+
     s, i, _, _, _ = stats.linregress(xs.values, ys.values)
     xl = np.linspace(xs.min(), xs.max())
 
     if ax is None:
-        plt.scatter(xs.values, ys.values, s=pointsize, color="k")
-        plt.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+        ax = plt.gca()
 
-        if len(colx) > label_len_limit:
-            plt.xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
-        else:
-            plt.xlabel(colx, fontproperties=prop)
+    ax.set_ylim(
+        top=maxy + (ry * ryratio),
+        bottom=min(miny, (xs.min() * s) + i) - (ry * (ryratio / 2.0)),
+    )
 
-        if len(coly) > label_len_limit:
-            plt.ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
-        else:
-            plt.ylabel(coly, fontproperties=prop)
+    ax.text(
+        tx,
+        maxy + (ry * (ryratio / 2.0)),
+        s=f"P: {round(p, 3):.3f}\nTAU: {round(tau, 3):.3f}",
+        color="k",
+        ha=ha,
+        va="bottom",
+        fontproperties=prop,
+    )
 
+    ax.scatter(xs.values, ys.values, s=pointsize, color="k")
+    ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+    if len(colx) > label_len_limit:
+        ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
     else:
-        ax.scatter(xs.values, ys.values, s=pointsize, color="k")
-        ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+        ax.set_xlabel(colx, fontproperties=prop)
 
-        if len(colx) > label_len_limit:
-            ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
-        else:
-            ax.set_xlabel(colx, fontproperties=prop)
+    if len(coly) > label_len_limit:
+        ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
+    else:
+        ax.set_ylabel(coly, fontproperties=prop)
 
-        if len(coly) > label_len_limit:
-            ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
-        else:
-            ax.set_ylabel(coly, fontproperties=prop)
+
+# %%
+
+# plot_group("HAMD")
+# plot_corr("Weight", "HAMD")
+# plt.show()
+# plt.close()
+# xs = (
+# base_set["Total-Lactobacillus"]
+# .append(middle_set["Total-Lactobacillus"])
+# .append(final_set["Total-Lactobacillus"])
+# )
+# ys = (
+# base_set["L.casei-sg."]
+# .append(middle_set["L.casei-sg."])
+# .append(final_set["L.casei-sg."])
+# )
+# xthreshold = (xs.max() + xs.min()) / 2.0
+# print(ys[xs < xthreshold].max())
+# print(ys[xs > xthreshold].max())
+
+# base_set["HAMD"].astype(np.float).max()
+# middle_set[col].astype(np.float)
+# final_set[col].astype(np.float)
 
 
 # %%
