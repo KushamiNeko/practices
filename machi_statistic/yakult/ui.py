@@ -1,17 +1,18 @@
 import gc
-import re
 import json
 import math
+import re
 import tkinter
-import seaborn as sns
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from matplotlib import font_manager as fm
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from scipy import stats
+from statsmodels.stats import multitest
 
 from preprocess import clean_data, test_data_na
 
@@ -31,6 +32,7 @@ class SearchField:
         self._listbox = self._new_list_box(window, column=column, row=row + 1)
 
         self._listbox.bind("<<ListboxSelect>>", lambda event: self._onselect(event))
+        self._listbox.bind("<KeyRelease>", lambda event: self._arrowKey(event))
 
         self._items = None
         self._filtered_items = None
@@ -86,6 +88,28 @@ class SearchField:
 
         return listbox
 
+    def _arrowKey(self, event):
+        # print(event.keysym)
+
+        w = event.widget
+        selection = w.curselection()
+        if len(selection) >= 1:
+            index = int(w.curselection()[0])
+
+            if event.keysym == "Up":
+                new_index = (index - 1) % len(self._filtered_items)
+            elif event.keysym == "Down":
+                new_index = (index + 1) % len(self._filtered_items)
+
+            self._listbox.selection_clear(index)
+            self._listbox.selection_set(new_index)
+            self._listbox.activate(new_index)
+
+            self._selected = w.get(new_index)
+
+            if self._selection_cb is not None:
+                self._selection_cb(self._tag)
+
     def _onkey(self, event):
         text = str(self._entry.get()).strip()
 
@@ -98,18 +122,30 @@ class SearchField:
                 self._listbox.insert(tkinter.END, str(item))
 
         else:
-            if text == "~":
+            # if text == "~":
+            if text.startswith("~"):
                 if self._significant_cb is not None:
                     self._filtered_items = self._significant_cb()
 
-                    for item in self._filtered_items:
-                        self._listbox.insert(tkinter.END, str(item))
+                else:
+                    self._filtered_items = self._items
+
+                    # for item in self._filtered_items:
+                    #     self._listbox.insert(tkinter.END, str(item))
 
             else:
+                self._filtered_items = self._items
+
+            if text == "~":
+                # for item in self._filtered_items:
+                #     self._listbox.insert(tkinter.END, str(item))
+                pass
+            else:
                 filtered = []
-                for item in self._items:
+                # for item in self._items:
+                for item in self._filtered_items:
                     found = False
-                    ts = text.split(",", -1)
+                    ts = text.replace("~", "", -1).split(",", -1)
 
                     for t in ts:
                         if t.strip() == "":
@@ -125,8 +161,10 @@ class SearchField:
                         filtered.append(item)
 
                 self._filtered_items = filtered
-                for item in filtered:
-                    self._listbox.insert(tkinter.END, str(item))
+
+            # for item in filtered:
+            for item in self._filtered_items:
+                self._listbox.insert(tkinter.END, str(item))
 
         if self._significant_coloring_cb is not None:
             self._significant_coloring_cb()
@@ -277,7 +315,7 @@ class MyApp:
             self._root,
             text="plot correlation",
             height=2,
-            command=lambda: self._plot_corr(chart_type="c"),
+            command=lambda: self._plot_chart(chart_type="c"),
         )
 
         self._plot_button.grid(
@@ -336,14 +374,6 @@ class MyApp:
     def _plot_chart(self, chart_type="g"):
 
         assert chart_type in ("g", "c")
-        # src = self._src.selected
-        # tar = self._tar.selected
-
-        # x = self._df[tar]
-        # y = self._df[src]
-
-        # s, i, _, _, _ = stats.linregress(x, y)
-        # xl = np.linspace(x.min(), x.max())
 
         win = tkinter.Toplevel()
         win.wm_title("plot")
@@ -357,15 +387,23 @@ class MyApp:
         elif chart_type == "c":
             self._plot_corr(ax=ax)
 
-        # ax.scatter(x, y, s=40, color="k")
-        # ax.plot(xl, xl * s + i, color="k")
-
-        # prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=12)
-
-        # ax.set_xlabel(tar, fontproperties=prop)
-        # ax.set_ylabel(src, fontproperties=prop)
-
         fig.tight_layout()
+
+        # if chart_type == "g":
+        #     fig.savefig(
+        #         "{}.png".format(self._src.selected.replace("/", "_", -1)), facecolor="w"
+        #     )
+        # elif chart_type == "c":
+        #     fig.savefig(
+        #         "{}_X_{}.png".format(
+        #             self._src.selected.replace("/", "_", -1),
+        #             self._tar.selected.replace("/", "_", -1),
+        #         ),
+        #         facecolor="w",
+        #     )
+        # else:
+        #     fig.savefig("plot.png", facecolor="w")
+        fig.savefig("plot.png", facecolor="w")
 
         canvas = FigureCanvasTkAgg(fig, master=win)
         canvas.get_tk_widget().grid(row=0, column=0)
@@ -383,33 +421,91 @@ class MyApp:
     def window(self):
         return self._window
 
+    def _correlation(self, x, y):
+        xs = self._df[x]
+        ys = self._df[y]
+
+        tau, p = stats.kendalltau(xs.values, ys.values)
+
+        return tau, p
+
+    def _significant_test_pair(self, col):
+
+        try:
+            _, bmp = stats.wilcoxon(
+                self._df[self._df["measure"] == "0W"][col].astype(np.float),
+                self._df[self._df["measure"] == "6W"][col].astype(np.float),
+            )
+        except ValueError as e:
+            print(f"{col}: {e}")
+            bmp = np.nan
+
+        try:
+            _, bfp = stats.wilcoxon(
+                self._df[self._df["measure"] == "0W"][col].astype(np.float),
+                self._df[self._df["measure"] == "12W"][col].astype(np.float),
+            )
+        except ValueError as e:
+            print(f"{col}: {e}")
+            bfp = np.nan
+
+        try:
+            _, mfp = stats.wilcoxon(
+                self._df[self._df["measure"] == "6W"][col].astype(np.float),
+                self._df[self._df["measure"] == "12W"][col].astype(np.float),
+            )
+        except ValueError as e:
+            print(f"{col}: {e}")
+            mfp = np.nan
+
+        _, adj_p, _, _ = multitest.multipletests(
+            pvals=[bmp, bfp, mfp], alpha=0.05, method="bonferroni",
+        )
+
+        return adj_p[0], adj_p[1]
+
     def _plot_group(
         self,
         ax=None,
         point_size=6,
         linelength=0.7,
         linewidth=2,
-        title="",
         title_len_limit=50,
         title_size=14,
     ):
+
+        col = self._src.selected
+        title = self._src.selected
 
         prop = fm.FontProperties(
             fname="fonts/Kosugi/Kosugi-Regular.ttf", size=title_size
         )
 
-        col = self._src.selected
-
         vs = pd.DataFrame(
             {
-                # "0W": base_set[col].astype(np.float),
-                # "6W": middle_set[col].astype(np.float),
-                # "12W": final_set[col].astype(np.float),
                 "0W": self._df[self._df["measure"] == "0W"][col].astype(np.float),
                 "6W": self._df[self._df["measure"] == "6W"][col].astype(np.float),
                 "12W": self._df[self._df["measure"] == "12W"][col].astype(np.float),
             }
         )
+
+        bmp, bfp = self._significant_test_pair(col)
+
+        maxy = max(
+            base_set[col].astype(np.float).max(),
+            middle_set[col].astype(np.float).max(),
+            final_set[col].astype(np.float).max(),
+        )
+
+        miny = min(
+            base_set[col].astype(np.float).min(),
+            middle_set[col].astype(np.float).min(),
+            final_set[col].astype(np.float).min(),
+        )
+
+        ry = maxy - miny
+
+        ryratio = 0.3
 
         if title != "":
             if len(title) <= title_len_limit:
@@ -418,48 +514,66 @@ class MyApp:
                 plt.title(title[:title_len_limit] + "...", fontproperties=prop)
 
         if ax is None:
-            plt.plot(
-                [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
-                [vs["0W"].mean(), vs["0W"].mean()],
-                color="k",
-                linewidth=linewidth,
-            )
-            plt.plot(
-                [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
-                [vs["6W"].mean(), vs["6W"].mean()],
-                color="k",
-                linewidth=linewidth,
-            )
-            plt.plot(
-                [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
-                [vs["12W"].mean(), vs["12W"].mean()],
-                color="k",
-                linewidth=linewidth,
-            )
-            sns.swarmplot(data=vs, color="k", ax=ax, size=point_size)
-        else:
-            ax.plot(
-                [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
-                [vs["0W"].mean(), vs["0W"].mean()],
-                color="k",
-                linewidth=linewidth,
-            )
-            ax.plot(
-                [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
-                [vs["6W"].mean(), vs["6W"].mean()],
-                color="k",
-                linewidth=linewidth,
-            )
-            ax.plot(
-                [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
-                [vs["12W"].mean(), vs["12W"].mean()],
-                color="k",
-                linewidth=linewidth,
-            )
-            sns.swarmplot(data=vs, color="k", size=point_size)
+            ax = plt.gca()
+
+        ax.set_ylim(top=maxy + (ry * ryratio), bottom=miny - (ry * (ryratio / 2.0)))
+
+        ty = maxy + (ry * 0.1)
+
+        ax.plot(
+            [0, 1], [ty, ty], color="k", linewidth=linewidth / 1.5,
+        )
+
+        ax.text(
+            0.5,
+            ty,
+            # s=f"P: {round(bmp, 3):.3f}",
+            s="P: {:.3f}".format(round(bmp, 3)),
+            color="k",
+            ha="center",
+            va="bottom",
+            fontproperties=prop,
+        )
+
+        ty = maxy + (ry * 0.2)
+
+        ax.plot(
+            [0, 2], [ty, ty], color="k", linewidth=linewidth / 1.5,
+        )
+
+        ax.text(
+            1,
+            ty,
+            # s=f"P: {round(bfp, 3):.3f}",
+            s="P: {:.3f}".format(round(bfp, 3)),
+            color="k",
+            ha="center",
+            va="bottom",
+            fontproperties=prop,
+        )
+
+        ax.plot(
+            [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
+            [vs["0W"].mean(), vs["0W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        ax.plot(
+            [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
+            [vs["6W"].mean(), vs["6W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        ax.plot(
+            [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
+            [vs["12W"].mean(), vs["12W"].mean()],
+            color="k",
+            linewidth=linewidth,
+        )
+        sns.swarmplot(data=vs, color="k", size=point_size)
 
     def _plot_corr(
-        self, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50,
+        self, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50
     ):
         prop = fm.FontProperties(
             fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize
@@ -468,41 +582,60 @@ class MyApp:
         coly = self._src.selected
         colx = self._tar.selected
 
-        # xs = base_set[colx].append(middle_set[colx]).append(final_set[colx])
-        # ys = base_set[coly].append(middle_set[coly]).append(final_set[coly])
         xs = self._df[colx]
         ys = self._df[coly]
+
+        maxy = ys.max()
+        miny = ys.min()
+
+        ry = maxy - miny
+        ryratio = 0.2
+
+        tau, p = self._correlation(colx, coly)
+
+        tx = xs.max()
+        ha = "right"
+        if (
+            ys[xs < ((xs.max() + xs.min()) / 2.0)].max()
+            < ys[xs > ((xs.max() + xs.min()) / 2.0)].max()
+        ):
+            tx = xs.min()
+            ha = "left"
 
         s, i, _, _, _ = stats.linregress(xs.values, ys.values)
         xl = np.linspace(xs.min(), xs.max())
 
         if ax is None:
-            plt.scatter(xs.values, ys.values, s=pointsize, color="k")
-            plt.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+            ax = plt.gca()
 
-            if len(colx) > label_len_limit:
-                plt.xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
-            else:
-                plt.xlabel(colx, fontproperties=prop)
+        ax.set_ylim(
+            top=maxy + (ry * ryratio),
+            bottom=min(miny, (xs.min() * s) + i) - (ry * (ryratio / 2.0)),
+        )
 
-            if len(coly) > label_len_limit:
-                plt.ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
-            else:
-                plt.ylabel(coly, fontproperties=prop)
+        ax.text(
+            tx,
+            maxy + (ry * (ryratio / 2.0)),
+            # s=f"P: {round(p, 3):.3f}\nTAU: {round(tau, 3):.3f}",
+            s="P: {:.3f}\nTAU: {:.3f}".format(round(p, 3), round(tau, 3)),
+            color="k",
+            ha=ha,
+            va="bottom",
+            fontproperties=prop,
+        )
 
+        ax.scatter(xs.values, ys.values, s=pointsize, color="k")
+        ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+        if len(colx) > label_len_limit:
+            ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
         else:
-            ax.scatter(xs.values, ys.values, s=pointsize, color="k")
-            ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+            ax.set_xlabel(colx, fontproperties=prop)
 
-            if len(colx) > label_len_limit:
-                ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
-            else:
-                ax.set_xlabel(colx, fontproperties=prop)
-
-            if len(coly) > label_len_limit:
-                ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
-            else:
-                ax.set_ylabel(coly, fontproperties=prop)
+        if len(coly) > label_len_limit:
+            ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
+        else:
+            ax.set_ylabel(coly, fontproperties=prop)
 
 
 def drop_append(cols, drop_1, drop_2, drop_3):
@@ -523,7 +656,8 @@ def rename_columns(data):
     for col in data.columns:
         match = regex.match(col)
         if match is not None:
-            new_cols.append(f"{match.group(1)}{match.group(3)}")
+            # new_cols.append(f"{match.group(1)}{match.group(3)}")
+            new_cols.append("{}{}".format(match.group(1), match.group(3)))
         else:
             new_cols.append(col)
 
@@ -586,6 +720,13 @@ if __name__ == "__main__":
     rename_columns(base_set)
     rename_columns(middle_set)
     rename_columns(final_set)
+
+    base_set["measure"] = "0W"
+    middle_set["measure"] = "6W"
+    final_set["measure"] = "12W"
+
+    df = base_set.append(middle_set).append(final_set)
+    df = df.reset_index(drop=True)
 
     print("ready to launch the program.....")
 
