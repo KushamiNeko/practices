@@ -1,6 +1,5 @@
 # %%
 import gc
-import json
 import math
 import os
 import re
@@ -10,14 +9,15 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pingouin
 import scipy.stats as stats
+
+# import pingouin
 import seaborn as sns
 from matplotlib import font_manager as fm
-from scipy import linalg
-from statsmodels.stats import multitest
-
 from preprocess import clean_data, test_data_na
+
+# from scipy import linalg
+from statsmodels.stats import multitest
 
 matplotlib.use("gtk3agg")
 
@@ -120,153 +120,164 @@ for col in final_set.columns:
 
 # %%
 
+base_set["measure"] = "0w"
+middle_set["measure"] = "6w"
+final_set["measure"] = "12w"
 
-def significant_test_pair(col):
+df = base_set.append(middle_set).append(final_set)
+df = df.reset_index(drop=True)
+
+df
+
+# %%
+
+# testing mulipletests bonferroni
+
+col = "HAMD"
+
+try:
+    _, p_base_middle = stats.wilcoxon(
+        df[df["measure"] == "0w"][col].astype(np.float),
+        df[df["measure"] == "6w"][col].astype(np.float),
+    )
+except ValueError as e:
+    print(f"{col}: {e}")
+    p_base_middle = np.nan
+
+try:
+    _, p_base_final = stats.wilcoxon(
+        df[df["measure"] == "0w"][col].astype(np.float),
+        df[df["measure"] == "12w"][col].astype(np.float),
+    )
+except ValueError as e:
+    print(f"{col}: {e}")
+    p_base_final = np.nan
+
+try:
+    _, p_middle_final = stats.wilcoxon(
+        df[df["measure"] == "6w"][col].astype(np.float),
+        df[df["measure"] == "12w"][col].astype(np.float),
+    )
+except ValueError as e:
+    print(f"{col}: {e}")
+    p_middle_final = np.nan
+
+_, adj_p_t, _, _ = multitest.multipletests(
+    pvals=[p_base_middle, p_base_final],
+    # pvals=[p_base_middle, p_base_final],
+    alpha=0.05,
+    method="bonferroni",
+)
+
+_, adj_p, _, _ = multitest.multipletests(
+    pvals=[p_base_middle, p_base_final, p_middle_final],
+    # pvals=[p_base_middle, p_base_final],
+    alpha=0.05,
+    method="bonferroni",
+)
+
+print(p_base_middle)
+print(p_base_final)
+print(adj_p_t)
+print(adj_p)
+
+# %%
+
+
+def significant_test_pair(df, col):
 
     try:
-        _, bmp = stats.wilcoxon(
-            base_set[col].astype(np.float), middle_set[col].astype(np.float),
+        _, p_base_middle = stats.wilcoxon(
+            df[df["measure"] == "0w"][col].astype(np.float),
+            df[df["measure"] == "6w"][col].astype(np.float),
         )
     except ValueError as e:
         print(f"{col}: {e}")
-        bmp = np.nan
+        p_base_middle = np.nan
 
     try:
-        _, bfp = stats.wilcoxon(
-            base_set[col].astype(np.float), final_set[col].astype(np.float),
+        _, p_base_final = stats.wilcoxon(
+            df[df["measure"] == "0w"][col].astype(np.float),
+            df[df["measure"] == "12w"][col].astype(np.float),
         )
     except ValueError as e:
         print(f"{col}: {e}")
-        bfp = np.nan
+        p_base_final = np.nan
 
     try:
-        _, mfp = stats.wilcoxon(
-            middle_set[col].astype(np.float), final_set[col].astype(np.float),
+        _, p_middle_final = stats.wilcoxon(
+            df[df["measure"] == "6w"][col].astype(np.float),
+            df[df["measure"] == "12w"][col].astype(np.float),
         )
     except ValueError as e:
         print(f"{col}: {e}")
-        mfp = np.nan
+        p_middle_final = np.nan
 
     _, adj_p, _, _ = multitest.multipletests(
-        pvals=[bmp, bfp, mfp], alpha=0.05, method="bonferroni",
+        pvals=[p_base_middle, p_base_final, p_middle_final],
+        # pvals=[p_base_middle, p_base_final],
+        alpha=0.05,
+        method="bonferroni",
     )
 
     return adj_p[0], adj_p[1]
 
 
-def significant_test_multiple(col):
+def significant_test_multiple(df, col):
     _, p = stats.friedmanchisquare(
-        base_set[col].astype(np.float),
-        middle_set[col].astype(np.float),
-        final_set[col].astype(np.float),
+        df[df["measure"] == "0w"][col].astype(np.float),
+        df[df["measure"] == "6w"][col].astype(np.float),
+        df[df["measure"] == "12w"][col].astype(np.float),
     )
 
     return p
 
 
-def correlation(x, y, calculate_middle=True):
-    if calculate_middle:
-        xs = base_set[x].append(middle_set[x]).append(final_set[x])
-        ys = base_set[y].append(middle_set[y]).append(final_set[y])
-    else:
-        xs = base_set[x].append(final_set[x])
-        ys = base_set[y].append(final_set[y])
-
-    tau, p = stats.kendalltau(xs.values, ys.values)
-
+def correlation(df, x, y):
+    tau, p = stats.kendalltau(df[x].astype(np.float), df[y].astype(np.float))
     return tau, p
-
-
-def partial_correlation(cols, calculate_middle=True):
-    if calculate_middle:
-        cs = base_set[cols].append(middle_set[cols]).append(final_set[cols])
-    else:
-        cs = base_set[cols].append(final_set[cols])
-
-    return partial_corr(cs)
-
-
-def partial_corr(C):
-    """
-    Returns the sample linear partial correlation coefficients between pairs of variables in C, controlling 
-    for the remaining variables in C.
-    Parameters
-    ----------
-    C : array-like, shape (n, p)
-        Array with the different variables. Each column of C is taken as a variable
-    Returns
-    -------
-    P : array-like, shape (p, p)
-        P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
-        for the remaining variables in C.
-    """
-
-    C = np.asarray(C)
-    p = C.shape[1]
-    P_corr = np.zeros((p, p), dtype=np.float)
-    for i in range(p):
-        P_corr[i, i] = 1
-        for j in range(i + 1, p):
-            idx = np.ones(p, dtype=np.bool)
-            idx[i] = False
-            idx[j] = False
-            beta_i = linalg.lstsq(C[:, idx], C[:, j])[0]
-            beta_j = linalg.lstsq(C[:, idx], C[:, i])[0]
-
-            res_j = C[:, j] - C[:, idx].dot(beta_i)
-            res_i = C[:, i] - C[:, idx].dot(beta_j)
-
-            corr = stats.pearsonr(res_i, res_j)[0]
-            P_corr[i, j] = corr
-            P_corr[j, i] = corr
-
-    return P_corr
 
 
 # %%
 
-max_col_length = max([len(col) for col in base_set.columns])
+max_col_length = max([len(col) for col in df.columns])
 
 time_significant_features_multiple = []
 time_significant_features_pair = []
 
-drops = ["ID"]
+drops = ["ID", "measure"]
 
 report_multiple = []
 report_pair_bm = []
 report_pair_bf = []
 report_pair_both = []
 
-for col in base_set.columns:
+for col in df.columns:
     if col in drops:
         continue
 
-    p = significant_test_multiple(col)
+    p = significant_test_multiple(df, col)
 
     if p <= 0.05:
         time_significant_features_multiple.append(col)
+        report_multiple.append([col, p])
 
-        # report_multiple.append([col, p])
-        report_multiple.append([col, round(p, 3)])
-
-    bmp, bfp = significant_test_pair(col)
+    bmp, bfp = significant_test_pair(df, col)
     if bmp <= 0.05:
-        # report_pair_bm.append([col, bmp])
-        report_pair_bm.append([col, round(bmp, 3)])
+        report_pair_bm.append([col, bmp])
     if bfp <= 0.05:
-        # report_pair_bf.append([col, bfp])
-        report_pair_bf.append([col, round(bfp, 3)])
+        report_pair_bf.append([col, bfp])
 
     if bmp <= 0.05 and bfp <= 0.05:
-        report_pair_both.append([col, round(bmp, 3), round(bfp, 3)])
+        report_pair_both.append([col, bmp, bfp])
 
     if bmp <= 0.05 or bfp <= 0.05:
         time_significant_features_pair.append(col)
 
 
-report_multiple.sort(key=lambda x: x[1])
-report_pair_bm.sort(key=lambda x: x[1])
-report_pair_bf.sort(key=lambda x: x[1])
+# report_multiple.sort(key=lambda x: x[1])
+# report_pair_bm.sort(key=lambda x: x[1])
+# report_pair_bf.sort(key=lambda x: x[1])
 
 # %%
 
@@ -275,8 +286,8 @@ corr_significant_features_strict = []
 
 repeated = set()
 
-for x in base_set.drop(drops, axis=1).columns:
-    for y in base_set.drop(drops, axis=1).columns:
+for x in df.drop(drops, axis=1).columns:
+    for y in df.drop(drops, axis=1).columns:
 
         if x == y:
             continue
@@ -284,20 +295,16 @@ for x in base_set.drop(drops, axis=1).columns:
         if f"{x}_{y}" in repeated or f"{y}_{x}" in repeated:
             continue
 
-        tau, p = correlation(x, y)
+        tau, p = correlation(df, x, y)
         if p <= 0.05:
-            # corr_significant_features.append((x, y, p, tau))
-            corr_significant_features.append((x, y, round(p, 3), round(tau, 2)))
+            corr_significant_features.append((x, y, p, tau))
             if abs(tau) >= 0.2:
-                # corr_significant_features_strict.append((x, y, p, tau))
-                corr_significant_features_strict.append(
-                    (x, y, round(p, 3), round(tau, 2))
-                )
+                corr_significant_features_strict.append((x, y, p, tau))
 
         repeated.add(f"{x}_{y}")
 
-corr_significant_features.sort(key=lambda x: x[2])
-corr_significant_features_strict.sort(key=lambda x: x[2])
+# corr_significant_features.sort(key=lambda x: x[2])
+# corr_significant_features_strict.sort(key=lambda x: x[2])
 
 # %%
 
@@ -308,21 +315,8 @@ def write_time_significant_report(file_name, title, report):
         f.write("\n")
         for r in report:
             f.write(f"{r[0].strip()}\n")
-            f.write(f"{r[1]:.30f}\n")
+            f.write(f"{r[1]:.19f}\n")
             f.write("\n")
-
-
-# write_time_significant_report(
-# "Friedman_report.txt", "Friedman Test", report_multiple,
-# )
-
-# write_time_significant_report(
-# "Wilcoxon_0W_vs_6W_report.txt", "Wilcoxon Test(0W vs 6W)", report_pair_bm,
-# )
-
-# write_time_significant_report(
-# "Wilcoxon_0W_vs_12W_report.txt", "Wilcoxon Test(0W vs 12W)", report_pair_bf,
-# )
 
 
 def write_friedman_wilcoxon_report(file_name, title, friedman_report, wilcoxon_report):
@@ -339,19 +333,19 @@ def write_friedman_wilcoxon_report(file_name, title, friedman_report, wilcoxon_r
         for r in friedman_report:
             if r[0].strip() in intersection:
                 f.write(f"{r[0].strip()}\n")
-                # f.write(f"  Friedman P: {r[1]:.30f}\n")
+                # f.write(f"  Friedman P: {r[1]:.19f}\n")
             for jr in wilcoxon_report:
                 if jr[0].strip() == r[0].strip():
                     if len(jr) == 2:
-                        # f.write(f"  Wilcoxon P: {jr[1]:.30f}\n")
-                        f.write(f"{spaces * multiplier * 1}P: {jr[1]:.30f}\n")
+                        # f.write(f"  Wilcoxon P: {jr[1]:.19f}\n")
+                        f.write(f"{spaces * multiplier * 1}P: {jr[1]:.19f}\n")
                         f.write("\n")
                     elif len(jr) == 3:
                         f.write(
-                            f"{spaces * multiplier * 1}P(0W vs 6W):  {jr[1]:.30f}\n"
+                            f"{spaces * multiplier * 1}P(0W vs 6W):  {jr[1]:.19f}\n"
                         )
                         f.write(
-                            f"{spaces * multiplier * 1}P(0W vs 12W): {jr[2]:.30f}\n"
+                            f"{spaces * multiplier * 1}P(0W vs 12W): {jr[2]:.19f}\n"
                         )
                         f.write("\n")
 
@@ -385,20 +379,10 @@ def write_kendall_report(file_name, title, kendall_report):
         for r in kendall_report:
             f.write(f"{r[0].strip()}\n")
             f.write(f"{r[1].strip()}\n")
-            f.write(f"  P:   {r[2]:.30f}\n")
-            f.write(f"  TAU: {r[3]:.30f}\n")
+            f.write(f"  P:   {r[2]:.19f}\n")
+            f.write(f"  TAU: {r[3]:.19f}\n")
             f.write("\n")
 
-
-# write_kendall_report(
-# "Kendall_report.txt", "Kendall Correlation(P <= 0.05)", corr_significant_features
-# )
-
-# write_kendall_report(
-# "Kendall_strict_report.txt",
-# "Kendall Correlation(P <= 0.05 X |TAU| >= 0.2)",
-# corr_significant_features_strict,
-# )
 
 # %%
 
@@ -425,23 +409,23 @@ def write_friedman_wilcoxon_kendall_report(
         for r in friedman_report:
             if r[0].strip() in intersection:
                 f.write(f"{r[0].strip()}\n")
-                # f.write(f"  Friedman P: {r[1]:.30f}\n")
+                # f.write(f"  Friedman P: {r[1]:.19f}\n")
 
                 for jr in wilcoxon_report:
                     if jr[0].strip() == r[0].strip():
-                        # f.write(f"  Wilcoxon P: {jr[1]:.30f}\n")
+                        # f.write(f"  Wilcoxon P: {jr[1]:.19f}\n")
                         if len(jr) == 2:
-                            # f.write(f"  Wilcoxon P: {jr[1]:.30f}\n")
+                            # f.write(f"  Wilcoxon P: {jr[1]:.19f}\n")
                             f.write(
-                                f"{spaces * multiplier * 1}Wilcoxon P: {jr[1]:.30f}\n"
+                                f"{spaces * multiplier * 1}Wilcoxon P: {jr[1]:.19f}\n"
                             )
                             f.write("\n")
                         elif len(jr) == 3:
                             f.write(
-                                f"{spaces * multiplier * 1}Wilcoxon P(0W vs 6W):  {jr[1]:.30f}\n"
+                                f"{spaces * multiplier * 1}Wilcoxon P(0W vs 6W):  {jr[1]:.19f}\n"
                             )
                             f.write(
-                                f"{spaces * multiplier * 1}Wilcoxon P(0W vs 12W): {jr[2]:.30f}\n"
+                                f"{spaces * multiplier * 1}Wilcoxon P(0W vs 12W): {jr[2]:.19f}\n"
                             )
                             f.write("\n")
 
@@ -460,20 +444,12 @@ def write_friedman_wilcoxon_kendall_report(
 
                             f.write(f"{spaces * multiplier * 2}{jr[0].strip()}\n")
 
-                        f.write(f"{spaces * multiplier * 3}Kendall P:   {jr[2]:.30f}\n")
-                        f.write(f"{spaces * multiplier * 3}Kendall TAU: {jr[3]:.30f}\n")
+                        f.write(f"{spaces * multiplier * 3}Kendall P:   {jr[2]:.19f}\n")
+                        f.write(f"{spaces * multiplier * 3}Kendall TAU: {jr[3]:.19f}\n")
                         f.write("\n")
 
                 f.write("\n")
 
-
-# write_friedman_wilcoxon_kendall_report(
-# file_name="Friedman_X_Wilcoxon_0W_vs_6W_X_Kendall_report.txt",
-# title="Friedman Test X Wilcoxon(0W vs 6W) X Kendall Correlation(P <= 0.05)",
-# friedman_report=report_multiple,
-# wilcoxon_report=report_pair_bm,
-# kendall_report=corr_significant_features,
-# )
 
 write_friedman_wilcoxon_kendall_report(
     file_name="Friedman_X_Wilcoxon_0W_vs_6W_X_Kendall_strict_report.txt",
@@ -483,13 +459,6 @@ write_friedman_wilcoxon_kendall_report(
     kendall_report=corr_significant_features_strict,
 )
 
-# write_friedman_wilcoxon_kendall_report(
-# file_name="Friedman_X_Wilcoxon_0W_vs_12W_X_Kendall_report.txt",
-# title="Friedman Test X Wilcoxon(0W vs 12W) X Kendall Correlation(P <= 0.05)",
-# friedman_report=report_multiple,
-# wilcoxon_report=report_pair_bf,
-# kendall_report=corr_significant_features,
-# )
 
 write_friedman_wilcoxon_kendall_report(
     file_name="Friedman_X_Wilcoxon_0W_vs_12W_X_Kendall_strict_report.txt",
@@ -522,7 +491,7 @@ def write_friedman_kendall_report(file_name, title, friedman_report, kendall_rep
         for r in friedman_report:
             if r[0].strip() in intersection:
                 f.write(f"{r[0].strip()}\n")
-                f.write(f"{spaces * multiplier * 1}Friedman P: {r[1]:.30f}\n")
+                f.write(f"{spaces * multiplier * 1}Friedman P: {r[1]:.19f}\n")
 
                 f.write("\n")
 
@@ -539,223 +508,18 @@ def write_friedman_kendall_report(file_name, title, friedman_report, kendall_rep
 
                             f.write(f"{spaces * multiplier * 2}{jr[0].strip()}\n")
 
-                        f.write(f"{spaces * multiplier * 3}Kendall P:   {jr[2]:.30f}\n")
-                        f.write(f"{spaces * multiplier * 3}Kendall TAU: {jr[3]:.30f}\n")
+                        f.write(f"{spaces * multiplier * 3}Kendall P:   {jr[2]:.19f}\n")
+                        f.write(f"{spaces * multiplier * 3}Kendall TAU: {jr[3]:.19f}\n")
                         f.write("\n")
 
                 f.write("\n")
-
-
-# write_friedman_kendall_report(
-# file_name="Friedman_X_Kendall_report.txt",
-# title="Friedman Test X Kendall Correlation(P <= 0.05)",
-# friedman_report=report_multiple,
-# kendall_report=corr_significant_features,
-# )
-
-# write_friedman_kendall_report(
-# file_name="Friedman_X_Kendall_strict_report.txt",
-# title="Friedman Test X Kendall Correlation(P <= 0.05 X |TAU| >= 0.2)",
-# friedman_report=report_multiple,
-# kendall_report=corr_significant_features_strict,
-# )
-
-
-# %%
-
-# with open("reports/significant_summary.txt", "w") as f:
-# spaces = "  "
-# new_lines = "\n\n\n"
-
-# f.write(f"Friedman: {len(report_multiple)} sets\n")
-# for r in report_multiple:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# f.write(f"Wilcoxon(0W vs 6W): {len(report_pair_bm)} sets\n")
-# for r in report_pair_bm:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# f.write(f"Wilcoxon(0W vs 12W): {len(report_pair_bf)} sets\n")
-# for r in report_pair_bf:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = set(r[0] for r in report_multiple).intersection(
-# set(r[0] for r in report_pair_bm)
-# )
-# f.write(f"Friedman X Wilcoxon(0W vs 6W): {len(intersection)} sets\n")
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = set(r[0] for r in report_multiple).intersection(
-# set(r[0] for r in report_pair_bf)
-# )
-# f.write(f"Friedman X Wilcoxon(0W vs 12W): {len(intersection)} sets\n")
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = set(r[0] for r in report_multiple).intersection(
-# set(r[0] for r in report_pair_bm).union(set(r[0] for r in report_pair_bf))
-# )
-# f.write(f"Friedman X Wilcoxon(0W vs 6W + 0W vs 12W): {len(intersection)} sets\n")
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = set(r[0] for r in report_multiple).intersection(
-# set(r[0] for r in corr_significant_features).union(
-# set(r[1] for r in corr_significant_features)
-# )
-# )
-# f.write(f"Friedman X Kendall(P <= 0.05): {len(intersection)} sets\n")
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = set(r[0] for r in report_multiple).intersection(
-# set(r[0] for r in corr_significant_features_strict).union(
-# set(r[1] for r in corr_significant_features_strict)
-# )
-# )
-# f.write(f"Friedman X Kendall(P <= 0.05 X |TAU| >= 0.2): {len(intersection)} sets\n")
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = (
-# set(r[0] for r in report_multiple)
-# .intersection(set(r[0] for r in report_pair_bm))
-# .intersection(
-# set(r[0] for r in corr_significant_features).union(
-# set(r[1] for r in corr_significant_features)
-# )
-# )
-# )
-# f.write(
-# f"Friedman X Wilcoxon(0W vs 6W) X Kendall(P <= 0.05): {len(intersection)} sets\n"
-# )
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = (
-# set(r[0] for r in report_multiple)
-# .intersection(set(r[0] for r in report_pair_bm))
-# .intersection(
-# set(r[0] for r in corr_significant_features_strict).union(
-# set(r[1] for r in corr_significant_features_strict)
-# )
-# )
-# )
-# f.write(
-# f"Friedman X Wilcoxon(0W vs 6W) X Kendall(P <= 0.05 X |TAU| >= 0.2): {len(intersection)} sets\n"
-# )
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = (
-# set(r[0] for r in report_multiple)
-# .intersection(set(r[0] for r in report_pair_bf))
-# .intersection(
-# set(r[0] for r in corr_significant_features).union(
-# set(r[1] for r in corr_significant_features)
-# )
-# )
-# )
-# f.write(
-# f"Friedman X Wilcoxon(0W vs 12W) X Kendall(P <= 0.05): {len(intersection)} sets\n"
-# )
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = (
-# set(r[0] for r in report_multiple)
-# .intersection(set(r[0] for r in report_pair_bf))
-# .intersection(
-# set(r[0] for r in corr_significant_features_strict).union(
-# set(r[1] for r in corr_significant_features_strict)
-# )
-# )
-# )
-# f.write(
-# f"Friedman X Wilcoxon(0W vs 12W) X Kendall(P <= 0.05 X |TAU| >= 0.2): {len(intersection)} sets\n"
-# )
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = (
-# set(r[0] for r in report_multiple)
-# .intersection(
-# set(r[0] for r in report_pair_bm).union(set(r[0] for r in report_pair_bf))
-# )
-# .intersection(
-# set(r[0] for r in corr_significant_features).union(
-# set(r[1] for r in corr_significant_features)
-# )
-# )
-# )
-# f.write(
-# f"Friedman X Wilcoxon(0W vs 6W + 0W vs 12W) X Kendall(P <= 0.05): {len(intersection)} sets\n"
-# )
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
-
-# intersection = (
-# set(r[0] for r in report_multiple)
-# .intersection(
-# set(r[0] for r in report_pair_bm).union(set(r[0] for r in report_pair_bf))
-# )
-# .intersection(
-# set(r[0] for r in corr_significant_features_strict).union(
-# set(r[1] for r in corr_significant_features_strict)
-# )
-# )
-# )
-# f.write(
-# f"Friedman X Wilcoxon(0W vs 6W + 0W vs 12W) X Kendall(P <= 0.05 X |TAU| >= 0.2): {len(intersection)} sets\n"
-# )
-# for r in report_multiple:
-# if r[0] in intersection:
-# f.write(f"{spaces}{r[0].strip()}\n")
-
-# f.write(new_lines)
 
 
 # %%
 
 
 def plot_group(
+    df,
     col,
     ax=None,
     point_size=6,
@@ -770,25 +534,16 @@ def plot_group(
 
     vs = pd.DataFrame(
         {
-            "0W": base_set[col].astype(np.float),
-            "6W": middle_set[col].astype(np.float),
-            "12W": final_set[col].astype(np.float),
+            "0W": df[df["measure"] == "0w"][col].astype(np.float),
+            "6W": df[df["measure"] == "6w"][col].astype(np.float),
+            "12W": df[df["measure"] == "12w"][col].astype(np.float),
         }
     )
 
-    bmp, bfp = significant_test_pair(col)
+    p_base_middle, p_base_final = significant_test_pair(df, col)
 
-    maxy = max(
-        base_set[col].astype(np.float).max(),
-        middle_set[col].astype(np.float).max(),
-        final_set[col].astype(np.float).max(),
-    )
-
-    miny = min(
-        base_set[col].astype(np.float).min(),
-        middle_set[col].astype(np.float).min(),
-        final_set[col].astype(np.float).min(),
-    )
+    maxy = df[col].max()
+    miny = df[col].min()
 
     ry = maxy - miny
 
@@ -801,7 +556,6 @@ def plot_group(
         if len(title) <= title_len_limit:
             ax.set_title(title, fontproperties=prop)
         else:
-            # ax.set_title(title[:title_len_limit] + "...", fontproperties=prop)
             ax.set_title(
                 title[: int(title_len_limit / 2.0)]
                 + "....."
@@ -820,7 +574,7 @@ def plot_group(
     ax.text(
         0.5,
         ty,
-        s=f"P: {round(bmp, 3):.3f}",
+        s=f"P: {round(p_base_middle, 3):.3f}",
         color="k",
         ha="center",
         va="bottom",
@@ -836,7 +590,7 @@ def plot_group(
     ax.text(
         1,
         ty,
-        s=f"P: {round(bfp, 3):.3f}",
+        s=f"P: {round(p_base_final, 3):.3f}",
         color="k",
         ha="center",
         va="bottom",
@@ -861,16 +615,17 @@ def plot_group(
         color="k",
         linewidth=linewidth,
     )
+
     sns.swarmplot(data=vs, color="k", ax=ax, size=point_size)
 
 
 def plot_corr(
-    colx, coly, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50
+    df, colx, coly, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50
 ):
     prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize)
 
-    xs = base_set[colx].append(middle_set[colx]).append(final_set[colx])
-    ys = base_set[coly].append(middle_set[coly]).append(final_set[coly])
+    xs = df[colx]
+    ys = df[coly]
 
     maxy = ys.max()
     miny = ys.min()
@@ -878,7 +633,7 @@ def plot_corr(
     ry = maxy - miny
     ryratio = 0.2
 
-    tau, p = correlation(colx, coly)
+    tau, p = correlation(df, colx, coly)
 
     tx = xs.max()
     ha = "right"
@@ -914,7 +669,6 @@ def plot_corr(
     ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
 
     if len(colx) > label_len_limit:
-        # ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
         ax.set_xlabel(
             colx[: int(label_len_limit / 2.0)]
             + "....."
@@ -925,7 +679,6 @@ def plot_corr(
         ax.set_xlabel(colx, fontproperties=prop)
 
     if len(coly) > label_len_limit:
-        # ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
         ax.set_ylabel(
             coly[: int(label_len_limit / 2.0)]
             + "....."
@@ -937,30 +690,6 @@ def plot_corr(
 
 
 # %%
-
-# plot_group("HAMD")
-# plt.show()
-# plot_corr("Weight", "HAMD")
-# plt.show()
-# plt.close()
-# xs = (
-# base_set["Total-Lactobacillus"]
-# .append(middle_set["Total-Lactobacillus"])
-# .append(final_set["Total-Lactobacillus"])
-# )
-# ys = (
-# base_set["L.casei-sg."]
-# .append(middle_set["L.casei-sg."])
-# .append(final_set["L.casei-sg."])
-# )
-# xthreshold = (xs.max() + xs.min()) / 2.0
-# print(ys[xs < xthreshold].max())
-# print(ys[xs > xthreshold].max())
-
-# base_set["HAMD"].astype(np.float).max()
-# middle_set[col].astype(np.float)
-# final_set[col].astype(np.float)
-
 
 gc.collect()
 
@@ -1007,7 +736,7 @@ gc.collect()
 # %%
 
 
-def plot_group_set(output, intersection, num_rows=3, num_cols=2, point_size=10):
+def plot_group_set(df, output, intersection, num_rows=3, num_cols=2, point_size=10):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
 
@@ -1039,7 +768,7 @@ def plot_group_set(output, intersection, num_rows=3, num_cols=2, point_size=10):
             r = 0
             c = 0
 
-        plot_group(col, ax=axes[r, c], title=col, point_size=point_size)
+        plot_group(df, col, ax=axes[r, c], title=col, point_size=point_size)
 
         c += 1
         if c % num_cols == 0:
@@ -1058,7 +787,7 @@ def plot_group_set(output, intersection, num_rows=3, num_cols=2, point_size=10):
     print(f"total {plotted} charts")
 
 
-def plot_corr_set(output, intersection, num_rows=3, num_cols=2, point_size=50):
+def plot_corr_set(df, output, intersection, num_rows=3, num_cols=2, point_size=50):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
 
@@ -1084,6 +813,10 @@ def plot_corr_set(output, intersection, num_rows=3, num_cols=2, point_size=50):
             if f"{colx}_{coly}" in repeated or f"{coly}_{colx}" in repeated:
                 continue
 
+            tau, p = correlation(df, colx, coly)
+            if p > 0.05 or abs(tau) < 0.2:
+                continue
+
             if i % int(num_rows * num_cols) == 0:
                 if i != 0:
                     print(f"save at {i}")
@@ -1102,7 +835,8 @@ def plot_corr_set(output, intersection, num_rows=3, num_cols=2, point_size=50):
                 r = 0
                 c = 0
 
-            plot_corr(colx, coly, ax=axes[r, c], pointsize=point_size)
+            # plot_corr(df, colx, coly, ax=axes[r, c], pointsize=point_size)
+            plot_corr(df, coly, colx, ax=axes[r, c], pointsize=point_size)
 
             c += 1
             if c % num_cols == 0:
@@ -1126,11 +860,25 @@ def plot_corr_set(output, intersection, num_rows=3, num_cols=2, point_size=50):
 
 # %%
 
+
+def make_intersection(df, reports):
+    intersection = []
+    for col in df.columns:
+        if col in reports:
+            intersection.append(col)
+
+    return intersection
+
+
 intersection = set(r[0] for r in report_multiple).intersection(
     set(r[0] for r in report_pair_bm)
 )
 
-plot_group_set("charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W", intersection)
+intersection = make_intersection(df, intersection)
+
+plot_group_set(
+    df, "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W", intersection
+)
 
 gc.collect()
 
@@ -1138,7 +886,11 @@ intersection = set(r[0] for r in report_multiple).intersection(
     set(r[0] for r in report_pair_bf)
 )
 
-plot_group_set("charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W", intersection)
+intersection = make_intersection(df, intersection)
+
+plot_group_set(
+    df, "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W", intersection
+)
 
 gc.collect()
 
@@ -1146,75 +898,55 @@ intersection = set(r[0] for r in report_multiple).intersection(
     set(r[0] for r in report_pair_both)
 )
 
+intersection = make_intersection(df, intersection)
+
 plot_group_set(
-    "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W_X_0W_vs_12W", intersection
+    df,
+    "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W_X_0W_vs_12W",
+    intersection,
 )
 
 gc.collect()
 
 # %%
 
-intersection = (
-    set(r[0] for r in report_multiple)
-    .intersection(set(r[0] for r in report_pair_bm))
-    .intersection(
-        set(r[0] for r in corr_significant_features_strict).union(
-            set(r[1] for r in corr_significant_features_strict)
-        )
-    )
+intersection = set(r[0] for r in report_multiple).intersection(
+    set(r[0] for r in report_pair_bm)
 )
 
-plot_group_set(
-    "charts/Friedman_X_Wilcoxon_X_Kendall/group/Friedman_X_Wilcoxon_0W_vs_6W",
-    intersection,
-)
+intersection = make_intersection(df, intersection)
 
 plot_corr_set(
-    "charts/Friedman_X_Wilcoxon_X_Kendall/corr/Friedman_X_Wilcoxon_0W_vs_6W",
+    df,
+    "charts/Friedman_X_Wilcoxon_X_Kendall/Friedman_X_Wilcoxon_0W_vs_6W",
     intersection,
 )
 
 gc.collect()
 
-intersection = (
-    set(r[0] for r in report_multiple)
-    .intersection(set(r[0] for r in report_pair_bf))
-    .intersection(
-        set(r[0] for r in corr_significant_features_strict).union(
-            set(r[1] for r in corr_significant_features_strict)
-        )
-    )
+intersection = set(r[0] for r in report_multiple).intersection(
+    set(r[0] for r in report_pair_bf)
 )
 
-plot_group_set(
-    "charts/Friedman_X_Wilcoxon_X_Kendall/group/Friedman_X_Wilcoxon_0W_vs_12W",
-    intersection,
-)
+intersection = make_intersection(df, intersection)
 
 plot_corr_set(
-    "charts/Friedman_X_Wilcoxon_X_Kendall/corr/Friedman_X_Wilcoxon_0W_vs_12W",
+    df,
+    "charts/Friedman_X_Wilcoxon_X_Kendall/Friedman_X_Wilcoxon_0W_vs_12W",
     intersection,
 )
 
 gc.collect()
 
-intersection = (
-    set(r[0] for r in report_multiple)
-    .intersection(set(r[0] for r in report_pair_both))
-    .intersection(
-        set(r[0] for r in corr_significant_features_strict).union(
-            set(r[1] for r in corr_significant_features_strict)
-        )
-    )
+intersection = set(r[0] for r in report_multiple).intersection(
+    set(r[0] for r in report_pair_both)
 )
 
-plot_group_set(
-    "charts/Friedman_X_Wilcoxon_X_Kendall/group/Friedman_X_Wilcoxon_0W_vs_6W_X_0W_vs_12W",
-    intersection,
-)
+intersection = make_intersection(df, intersection)
 
 plot_corr_set(
-    "charts/Friedman_X_Wilcoxon_X_Kendall/corr/Friedman_X_Wilcoxon_0W_vs_6W_X_0W_vs_12W",
+    df,
+    "charts/Friedman_X_Wilcoxon_X_Kendall/Friedman_X_Wilcoxon_0W_vs_6W_X_0W_vs_12W",
     intersection,
 )
 
@@ -1234,44 +966,46 @@ for r in set(r[0] for r in report_pair_bf):
 
 # %%
 
-base_set["measure"] = "0W"
-middle_set["measure"] = "6W"
-final_set["measure"] = "12W"
-ndf = base_set.append(middle_set).append(final_set)
-ndf = ndf.reset_index(drop=True)
-ndf
+# testing partial correlation
+
+# base_set["measure"] = "0W"
+# middle_set["measure"] = "6W"
+# final_set["measure"] = "12W"
+# ndf = base_set.append(middle_set).append(final_set)
+# ndf = ndf.reset_index(drop=True)
+# ndf
 
 # %%
 
-significant_columns = list(
-    set(r[0] for r in report_multiple).intersection(
-        set(r[0] for r in report_pair_bm).union(set(r[0] for r in report_pair_bf))
-    )
-)
+# significant_columns = list(
+# set(r[0] for r in report_multiple).intersection(
+# set(r[0] for r in report_pair_bm).union(set(r[0] for r in report_pair_bf))
+# )
+# )
 
 # %%
 
-sdf = ndf[significant_columns]
+# sdf = ndf[significant_columns]
 
-x = "HAMD"
-y = "L.casei-sg."
+# x = "HAMD"
+# y = "L.casei-sg."
 
-cols = set(significant_columns)
-cols.remove(x)
-cols.remove(y)
+# cols = set(significant_columns)
+# cols.remove(x)
+# cols.remove(y)
 # cols
 
 # sdf.corr(method="spearman")["HAMD"]
 
 # print(sdf.corr("kendall")["HAMD"])
-for col in significant_columns:
-    if col == x or col == y:
-        continue
-    corr = pingouin.partial_corr(data=sdf, x=x, y=y, covar=col, method="spearman")
-    if (corr["p-val"] <= 0.05).any():
-        print(col[:75])
-        print(corr)
-        print()
+# for col in significant_columns:
+# if col == x or col == y:
+# continue
+# corr = pingouin.partial_corr(data=sdf, x=x, y=y, covar=col, method="spearman")
+# if (corr["p-val"] <= 0.05).any():
+# print(col[:75])
+# print(corr)
+# print()
 
 
 # X	Y	Z
@@ -1304,108 +1038,5 @@ for col in significant_columns:
 
 plt.close()
 gc.collect()
-
-# base_set["HAMD"]
-# middle_set["HAMD"]
-# final_set["HAMD"]
-# %%
-# Y = [
-# "HAMD",
-# # "BDI",
-# ]
-
-# significant_features = []
-# for col in base_set.columns:
-# bmp, mfp, bfp = significant_test(col, method="friedman")
-# if bfp <= 0.05 or bmp <= 0.05:
-# print(col)
-# if col not in significant_features:
-# significant_features.append(col)
-
-# bmp, mfp, bfp = significant_test(col, method="tr")
-# if bfp <= 0.05 or bmp <= 0.05:
-# print(col)
-# if col not in significant_features:
-# significant_features.append(col)
-
-
-# %%
-
-
-# final_features = []
-# for feature in significant_features:
-# for tau, p in kendall(feature, calculate_middle=True):
-# # for tau, p in kendall(feature, calculate_middle=False):
-# print(feature)
-# print(f"p: {p}")
-# print(f"tau: {tau}")
-# print()
-
-# if p <= 0.05:
-# final_features.append(feature)
-
-
-# %%
-
-
-# %%
-
-# for feature in final_features:
-#     print(feature)
-
-# len(final_features)
-# final_features
-
-# plot_diff("k__Bacteria;p__Firmicutes;c__Bacilli;o__Turicibacterales", point_size=6)
-# for col in base_set.columns:
-#     f, axes = plt.subplots(figsize=(20, 16))
-#     plot_diff(col, point_size=8)
-#     plt.tight_layout()
-#     f.savefig(f"pics/{col.replace('/', '_', -1)}.png", facecolor="w")
-#     plt.close(f)
-
-
-# %%
-
-# num_rows = 3
-# num_rows = 4
-# num_cols = 2
-# num_cols = 3
-
-# title_len_limit = 50
-
-# prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=14)
-
-# f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 25))
-# f, axes = plt.subplots(num_rows, num_cols, figsize=(25, 25))
-# f, axes = plt.subplots(num_rows, num_cols, figsize=(25, 30))
-
-# plot_diff("HAMD", point_size=10, ax=axes[0, 0])
-# axes[0, 0].set_title("HAMD", fontproperties=prop)
-
-# plot_diff("BDI", point_size=10, ax=axes[0, 1])
-# axes[0, 1].set_title("BDI", fontproperties=prop)
-
-# row = 1
-# col = 0
-# row = 0
-# col = 2
-
-# for feature in significant_features:
-# for feature in final_features:
-# plot_diff(feature, point_size=8, ax=axes[row, col])
-
-# if len(feature) <= title_len_limit:
-# axes[row, col].set_title(feature, fontproperties=prop)
-# else:
-# axes[row, col].set_title(feature[:title_len_limit] + "...", fontproperties=prop)
-
-# col += 1
-# if col % num_cols == 0:
-# col = 0
-# row += 1
-
-# plt.tight_layout()
-# f.savefig("analysis.png", facecolor="w")
 
 # %%
