@@ -9,37 +9,39 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 
-
-def clean_data(df):
-    regex = re.compile(r"^.+[-_](\d{1}).*$", re.MULTILINE)
-
-    for i, col in enumerate(df.columns):
-        m = regex.match(col)
-        # na = df[col][df[col].isna()]
-        na = df[col][df[col].isnull()]
-        if len(na) > 0:
-            if m is not None:
-
-                pcol = (
-                    col[: m.start(1)] + str(int(m.group(1)) - 1) + col[m.start(1) + 1 :]
-                )
-
-                # df[col][df[col].isna()] = df[pcol][df[col].isna()]
-                df[col][df[col].isnull()] = df[pcol][df[col].isnull()]
-
-            else:
-                # raise Exception(f"\n{na}\n{m}\n")
-                raise Exception("\n{}\n{}\n".format(na, m))
-
-    return df
+import utils
 
 
-def test_data_na(df):
-    for col in df.columns:
-        for i, d in enumerate(df[col]):
-            if math.isnan(d):
-                # raise Exception(f"data should not be nan, col: {col}, {i}")
-                raise Exception("data should not be nan, col: {}, {}".format(col, i))
+# def clean_data(df):
+    # regex = re.compile(r"^.+[-_](\d{1}).*$", re.MULTILINE)
+
+    # for i, col in enumerate(df.columns):
+        # m = regex.match(col)
+        # # na = df[col][df[col].isna()]
+        # na = df[col][df[col].isnull()]
+        # if len(na) > 0:
+            # if m is not None:
+
+                # pcol = (
+                    # col[: m.start(1)] + str(int(m.group(1)) - 1) + col[m.start(1) + 1 :]
+                # )
+
+                # # df[col][df[col].isna()] = df[pcol][df[col].isna()]
+                # df[col][df[col].isnull()] = df[pcol][df[col].isnull()]
+
+            # else:
+                # # raise Exception(f"\n{na}\n{m}\n")
+                # raise Exception("\n{}\n{}\n".format(na, m))
+
+    # return df
+
+
+# def test_data_na(df):
+    # for col in df.columns:
+        # for i, d in enumerate(df[col]):
+            # if math.isnan(d):
+                # # raise Exception(f"data should not be nan, col: {col}, {i}")
+                # raise Exception("data should not be nan, col: {}, {}".format(col, i))
 
 
 def calculate_statistic(
@@ -124,7 +126,7 @@ if __name__ == "__main__":
     df = df[:19]
     df = df.astype(np.float64)
 
-    df = clean_data(df)
+    df = utils.clean_data(df)
 
     # print(f"total columns: {len(df.columns)}")
     print("total columns: {}".format(len(df.columns)))
@@ -133,7 +135,7 @@ if __name__ == "__main__":
 
     print("testing dataframe.....")
 
-    test_data_na(df)
+    utils.test_data_na(df)
 
     print("finish testing dataframe.....")
 

@@ -1,20 +1,16 @@
 import gc
 import json
 import math
-import re
 import tkinter
+from tkinter import ttk
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-from matplotlib import font_manager as fm
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from scipy import stats
-from statsmodels.stats import multitest
 
-from preprocess import clean_data, test_data_na
+import utils
 
 matplotlib.use("tkagg")
 
@@ -89,7 +85,6 @@ class SearchField:
         return listbox
 
     def _arrowKey(self, event):
-        # print(event.keysym)
 
         w = event.widget
         selection = w.curselection()
@@ -122,7 +117,6 @@ class SearchField:
                 self._listbox.insert(tkinter.END, str(item))
 
         else:
-            # if text == "~":
             if text.startswith("~"):
                 if self._significant_cb is not None:
                     self._filtered_items = self._significant_cb()
@@ -130,19 +124,13 @@ class SearchField:
                 else:
                     self._filtered_items = self._items
 
-                    # for item in self._filtered_items:
-                    #     self._listbox.insert(tkinter.END, str(item))
-
             else:
                 self._filtered_items = self._items
 
             if text == "~":
-                # for item in self._filtered_items:
-                #     self._listbox.insert(tkinter.END, str(item))
                 pass
             else:
                 filtered = []
-                # for item in self._items:
                 for item in self._filtered_items:
                     found = False
                     ts = text.replace("~", "", -1).split(",", -1)
@@ -151,7 +139,7 @@ class SearchField:
                         if t.strip() == "":
                             continue
 
-                        if t.strip() in str(item).lower():
+                        if t.strip().lower() in str(item).lower():
                             found = True
                         else:
                             found = False
@@ -162,7 +150,6 @@ class SearchField:
 
                 self._filtered_items = filtered
 
-            # for item in filtered:
             for item in self._filtered_items:
                 self._listbox.insert(tkinter.END, str(item))
 
@@ -229,9 +216,10 @@ class SearchField:
 
 
 class MyApp:
-    def __init__(self, statistic, df, title="Statistic"):
+    def __init__(self, reports, df, title="Statistic"):
 
-        self._statistic = statistic
+        self._reports = reports
+        self._statistic = reports["delta_12w"]
         self._df = df
 
         self._window = tkinter.Tk()
@@ -243,10 +231,11 @@ class MyApp:
         self._root.grid_columnconfigure(1, weight=1)
 
         self._root.grid_rowconfigure(0, weight=1)
-        self._root.grid_rowconfigure(1, weight=35)
+        self._root.grid_rowconfigure(1, weight=50)
         self._root.grid_rowconfigure(2, weight=1)
         self._root.grid_rowconfigure(3, weight=1)
         self._root.grid_rowconfigure(4, weight=1)
+        self._root.grid_rowconfigure(5, weight=4)
 
         self._src = SearchField(self._root, 0, 0, "src")
         self._tar = SearchField(self._root, 1, 0, "tar")
@@ -271,7 +260,9 @@ class MyApp:
         self._info.grid_rowconfigure(1, weight=1)
         self._info.grid_rowconfigure(2, weight=1)
         self._info.grid_rowconfigure(3, weight=1)
-        # self._info.grid_rowconfigure(4, weight=1)
+
+        self._info.grid_columnconfigure(0, weight=1)
+        self._info.grid_columnconfigure(1, weight=1)
 
         self._a_var = tkinter.StringVar()
         self._a_label = tkinter.Label(self._info, textvariable=self._a_var)
@@ -287,15 +278,45 @@ class MyApp:
 
         self._p_var = tkinter.StringVar()
         self._p_label = tkinter.Label(self._info, textvariable=self._p_var)
-        self._p_label.grid(column=0, row=2, columnspan=2, sticky=tkinter.W)
+        self._p_label.grid(column=0, row=2, sticky=tkinter.W)
 
         self._p_var.set("P:")
 
+        self._p_threshold_label = tkinter.Label(self._info, text="P Threshold:")
+        self._p_threshold_label.grid(column=1, row=2, sticky=tkinter.E)
+
+        self._p_threshold = tkinter.StringVar()
+        self._p_threshold_entry = tkinter.Entry(
+            self._info, textvariable=self._p_threshold
+        )
+        self._p_threshold_entry.grid(column=2, row=2, sticky=tkinter.E)
+
+        self._p_threshold_entry.bind(
+            "<KeyRelease>", lambda event: self._threshold_update(event)
+        )
+
+        self._p_threshold.set("0.05")
+
         self._tau_var = tkinter.StringVar()
         self._tau_label = tkinter.Label(self._info, textvariable=self._tau_var)
-        self._tau_label.grid(column=0, row=3, columnspan=2, sticky=tkinter.W)
+        self._tau_label.grid(column=0, row=3, sticky=tkinter.W)
 
         self._tau_var.set("TAU:")
+
+        self._tau_threshold_label = tkinter.Label(self._info, text="TAU Threshold:")
+        self._tau_threshold_label.grid(column=1, row=3, sticky=tkinter.E)
+
+        self._tau_threshold = tkinter.StringVar()
+        self._tau_threshold_entry = tkinter.Entry(
+            self._info, textvariable=self._tau_threshold
+        )
+        self._tau_threshold_entry.grid(column=2, row=3, sticky=tkinter.E)
+
+        self._tau_threshold_entry.bind(
+            "<KeyRelease>", lambda event: self._threshold_update(event)
+        )
+
+        self._tau_threshold.set("0.2")
 
         self._plot_button = tkinter.Button(
             self._root,
@@ -325,23 +346,96 @@ class MyApp:
             sticky=tkinter.W + tkinter.E + tkinter.S + tkinter.N,
         )
 
+        self._combo = ttk.Combobox(
+            self._root, values=list(self._reports.keys()), state="readonly"
+        )
+        self._combo.set("delta_12w")
+        self._combo.grid(
+            column=0,
+            row=5,
+            columnspan=2,
+            sticky=tkinter.W + tkinter.E + tkinter.S + tkinter.N,
+        )
+
+        self._combo.bind("<<ComboboxSelected>>", lambda e: self._combo_selection_cb())
+
+    def _threshold_update(self, event):
+        self._tar.init_search()
+
+    def _significant_threshold(self):
+        p_threshold = None
+        tau_threshold = None
+
+        if self._p_threshold.get() != "":
+            try:
+                p_threshold = float(self._p_threshold.get())
+            except ValueError as e:
+                print(e)
+                pass
+
+        if self._tau_threshold.get() != "":
+            try:
+                tau_threshold = float(self._tau_threshold.get())
+            except ValueError as e:
+                print(e)
+                pass
+
+        return p_threshold, tau_threshold
+
+    def _combo_selection_cb(self):
+        self._statistic = self._reports[self._combo.get()]
+        self._selection_cb("src")
+
     def _significant_cb(self):
         src = self._src.selected
+
+        p_threshold, tau_threshold = self._significant_threshold()
+
         if src is not None and src != "":
             items = []
 
             for k, v in self._statistic[src].items():
-                if float(v["p"]) <= 0.05:
+
+                ok = True
+                if p_threshold is not None:
+                    if math.isnan(float(v["p"])):
+                        ok = False
+                    if float(v["p"]) > p_threshold:
+                        ok = False
+
+                if tau_threshold is not None:
+                    if math.isnan(float(v["tau"])):
+                        ok = False
+                    if abs(float(v["tau"])) < tau_threshold:
+                        ok = False
+
+                if ok:
                     items.append(k)
 
             return items
 
     def _significant_coloring_cb(self):
         src = self._src.selected
+        p_threshold, tau_threshold = self._significant_threshold()
+
         if src is not None and src != "":
             indexes = []
             for i, v in enumerate(self._tar.filtered_items):
-                if float(self._statistic[src][v]["p"]) <= 0.05:
+
+                ok = True
+                if p_threshold is not None:
+                    if math.isnan(float(self._statistic[src][v]["p"])):
+                        ok = False
+                    if float(self._statistic[src][v]["p"]) > p_threshold:
+                        ok = False
+
+                if tau_threshold is not None:
+                    if math.isnan(float(self._statistic[src][v]["tau"])):
+                        ok = False
+                    if abs(float(self._statistic[src][v]["tau"])) < tau_threshold:
+                        ok = False
+
+                if ok:
                     indexes.append(i)
 
             self._tar.set_listbox_items_significant(indexes)
@@ -354,8 +448,8 @@ class MyApp:
         src = self._src.selected
         tar = self._tar.selected
 
-        self._a_var.set("A: {}".format(src))
-        self._b_var.set("B: {}".format(tar))
+        self._a_var.set(f"A: {src}")
+        self._b_var.set(f"B: {tar}")
 
         if self._statistic is None:
             return
@@ -368,8 +462,8 @@ class MyApp:
                 p = vk.get("p", math.nan)
                 tau = vk.get("tau", math.nan)
 
-                self._p_var.set("P: {}".format(str(p)))
-                self._tau_var.set("TAU: {}".format(str(tau)))
+                self._p_var.set(f"P:      {float(p):.19f}")
+                self._tau_var.set(f"TAU: {float(tau):.19f}")
 
     def _plot_chart(self, chart_type="g"):
 
@@ -383,26 +477,49 @@ class MyApp:
         win.bind("<Escape>", lambda event: self._clear_plot(win, fig, ax))
 
         if chart_type == "g":
-            self._plot_group(ax=ax)
+            if self._src.selected == "" or self._src.selected is None:
+                return
+
+            utils.plot_group(
+                self._df, self._src.selected, ax=ax, title=self._src.selected
+            )
+
         elif chart_type == "c":
-            self._plot_corr(ax=ax)
+            if self._src.selected == "" or self._src.selected is None:
+                return
+
+            if self._tar.selected == "" or self._tar.selected is None:
+                return
+
+            assert self._combo.get() in (
+                None,
+                "simple",
+                "delta_6w",
+                "delta_12w",
+                "delta_6w_12w",
+                "delta_0w_6w_12w",
+            )
+
+            delta = None
+            if self._combo.get() == "simple":
+                pass
+            elif self._combo.get() == "delta_6w":
+                delta = "mb"
+            elif self._combo.get() == "delta_12w":
+                delta = "fb"
+            elif self._combo.get() == "delta_6w_12w":
+                delta = "mbfb"
+            elif self._combo.get() == "delta_0w_6w_12w":
+                delta = "bbmbfb"
+            else:
+                raise ValueError("invalid combo value")
+
+            utils.plot_correlation(
+                self._df, self._tar.selected, self._src.selected, delta=delta, ax=ax
+            )
 
         fig.tight_layout()
 
-        # if chart_type == "g":
-        #     fig.savefig(
-        #         "{}.png".format(self._src.selected.replace("/", "_", -1)), facecolor="w"
-        #     )
-        # elif chart_type == "c":
-        #     fig.savefig(
-        #         "{}_X_{}.png".format(
-        #             self._src.selected.replace("/", "_", -1),
-        #             self._tar.selected.replace("/", "_", -1),
-        #         ),
-        #         facecolor="w",
-        #     )
-        # else:
-        #     fig.savefig("plot.png", facecolor="w")
         fig.savefig("plot.png", facecolor="w")
 
         canvas = FigureCanvasTkAgg(fig, master=win)
@@ -421,276 +538,18 @@ class MyApp:
     def window(self):
         return self._window
 
-    def _correlation(self, x, y):
-        xs = self._df[x]
-        ys = self._df[y]
 
-        tau, p = stats.kendalltau(xs.values, ys.values)
-
-        return tau, p
-
-    def _significant_test_pair(self, col):
-
-        try:
-            _, bmp = stats.wilcoxon(
-                self._df[self._df["measure"] == "0W"][col].astype(np.float),
-                self._df[self._df["measure"] == "6W"][col].astype(np.float),
-            )
-        except ValueError as e:
-            print(f"{col}: {e}")
-            bmp = np.nan
-
-        try:
-            _, bfp = stats.wilcoxon(
-                self._df[self._df["measure"] == "0W"][col].astype(np.float),
-                self._df[self._df["measure"] == "12W"][col].astype(np.float),
-            )
-        except ValueError as e:
-            print(f"{col}: {e}")
-            bfp = np.nan
-
-        try:
-            _, mfp = stats.wilcoxon(
-                self._df[self._df["measure"] == "6W"][col].astype(np.float),
-                self._df[self._df["measure"] == "12W"][col].astype(np.float),
-            )
-        except ValueError as e:
-            print(f"{col}: {e}")
-            mfp = np.nan
-
-        _, adj_p, _, _ = multitest.multipletests(
-            pvals=[bmp, bfp, mfp], alpha=0.05, method="bonferroni",
-        )
-
-        return adj_p[0], adj_p[1]
-
-    def _plot_group(
-        self,
-        ax=None,
-        point_size=6,
-        linelength=0.7,
-        linewidth=2,
-        title_len_limit=50,
-        title_size=14,
-    ):
-
-        col = self._src.selected
-        title = self._src.selected
-
-        prop = fm.FontProperties(
-            fname="fonts/Kosugi/Kosugi-Regular.ttf", size=title_size
-        )
-
-        vs = pd.DataFrame(
-            {
-                "0W": self._df[self._df["measure"] == "0W"][col].astype(np.float),
-                "6W": self._df[self._df["measure"] == "6W"][col].astype(np.float),
-                "12W": self._df[self._df["measure"] == "12W"][col].astype(np.float),
-            }
-        )
-
-        bmp, bfp = self._significant_test_pair(col)
-
-        maxy = max(
-            base_set[col].astype(np.float).max(),
-            middle_set[col].astype(np.float).max(),
-            final_set[col].astype(np.float).max(),
-        )
-
-        miny = min(
-            base_set[col].astype(np.float).min(),
-            middle_set[col].astype(np.float).min(),
-            final_set[col].astype(np.float).min(),
-        )
-
-        ry = maxy - miny
-
-        ryratio = 0.3
-
-        if title != "":
-            if len(title) <= title_len_limit:
-                plt.title(title, fontproperties=prop)
-            else:
-                plt.title(title[:title_len_limit] + "...", fontproperties=prop)
-
-        if ax is None:
-            ax = plt.gca()
-
-        ax.set_ylim(top=maxy + (ry * ryratio), bottom=miny - (ry * (ryratio / 2.0)))
-
-        ty = maxy + (ry * 0.1)
-
-        ax.plot(
-            [0, 1], [ty, ty], color="k", linewidth=linewidth / 1.5,
-        )
-
-        ax.text(
-            0.5,
-            ty,
-            # s=f"P: {round(bmp, 3):.3f}",
-            s="P: {:.3f}".format(round(bmp, 3)),
-            color="k",
-            ha="center",
-            va="bottom",
-            fontproperties=prop,
-        )
-
-        ty = maxy + (ry * 0.2)
-
-        ax.plot(
-            [0, 2], [ty, ty], color="k", linewidth=linewidth / 1.5,
-        )
-
-        ax.text(
-            1,
-            ty,
-            # s=f"P: {round(bfp, 3):.3f}",
-            s="P: {:.3f}".format(round(bfp, 3)),
-            color="k",
-            ha="center",
-            va="bottom",
-            fontproperties=prop,
-        )
-
-        ax.plot(
-            [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
-            [vs["0W"].mean(), vs["0W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        ax.plot(
-            [1 - (linelength / 2.0), 1 + (linelength / 2.0)],
-            [vs["6W"].mean(), vs["6W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        ax.plot(
-            [2 - (linelength / 2.0), 2 + (linelength / 2.0)],
-            [vs["12W"].mean(), vs["12W"].mean()],
-            color="k",
-            linewidth=linewidth,
-        )
-        sns.swarmplot(data=vs, color="k", size=point_size)
-
-    def _plot_corr(
-        self, ax=None, pointsize=20, linewidth=2, labelsize=14, label_len_limit=50
-    ):
-        prop = fm.FontProperties(
-            fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize
-        )
-
-        coly = self._src.selected
-        colx = self._tar.selected
-
-        xs = self._df[colx]
-        ys = self._df[coly]
-
-        maxy = ys.max()
-        miny = ys.min()
-
-        ry = maxy - miny
-        ryratio = 0.2
-
-        tau, p = self._correlation(colx, coly)
-
-        tx = xs.max()
-        ha = "right"
-        if (
-            ys[xs < ((xs.max() + xs.min()) / 2.0)].max()
-            < ys[xs > ((xs.max() + xs.min()) / 2.0)].max()
-        ):
-            tx = xs.min()
-            ha = "left"
-
-        s, i, _, _, _ = stats.linregress(xs.values, ys.values)
-        xl = np.linspace(xs.min(), xs.max())
-
-        if ax is None:
-            ax = plt.gca()
-
-        ax.set_ylim(
-            top=maxy + (ry * ryratio),
-            bottom=min(miny, (xs.min() * s) + i) - (ry * (ryratio / 2.0)),
-        )
-
-        ax.text(
-            tx,
-            maxy + (ry * (ryratio / 2.0)),
-            # s=f"P: {round(p, 3):.3f}\nTAU: {round(tau, 3):.3f}",
-            s="P: {:.3f}\nTAU: {:.3f}".format(round(p, 3), round(tau, 3)),
-            color="k",
-            ha=ha,
-            va="bottom",
-            fontproperties=prop,
-        )
-
-        ax.scatter(xs.values, ys.values, s=pointsize, color="k")
-        ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
-
-        if len(colx) > label_len_limit:
-            ax.set_xlabel(colx[:label_len_limit] + "...", fontproperties=prop)
-        else:
-            ax.set_xlabel(colx, fontproperties=prop)
-
-        if len(coly) > label_len_limit:
-            ax.set_ylabel(coly[:label_len_limit] + "...", fontproperties=prop)
-        else:
-            ax.set_ylabel(coly, fontproperties=prop)
-
-
-def drop_append(cols, drop_1, drop_2, drop_3):
-    drop_1.append(cols[1])
-    drop_1.append(cols[2])
-
-    drop_2.append(cols[0])
-    drop_2.append(cols[2])
-
-    drop_3.append(cols[0])
-    drop_3.append(cols[1])
-
-
-def rename_columns(data):
-    regex = re.compile(r"(^.+)([-_]\d{1})(.*)$", re.MULTILINE)
-    new_cols = []
-
-    for col in data.columns:
-        match = regex.match(col)
-        if match is not None:
-            # new_cols.append(f"{match.group(1)}{match.group(3)}")
-            new_cols.append("{}{}".format(match.group(1), match.group(3)))
-        else:
-            new_cols.append(col)
-
-    data.columns = new_cols
-
-
-def test_column_pair(cols):
-    assert len(cols) == 3
-    for j in cols:
-        for k in cols:
-            assert j.startswith(k[:3])
-
-
-if __name__ == "__main__":
-    stat = None
-
-    print("reading statistic.json")
-
-    with open("statistic.json", "r") as f:
-        stat = json.load(f)
-
-    print("reading data.csv")
-
+def read_data_csv(src="data.csv"):
     df = pd.read_csv("data.csv")
 
     df = df[:19]
     df = df.astype(np.float64)
 
-    df = clean_data(df)
+    df = utils.clean_data(df)
 
     print("testing dataframe.....")
 
-    test_data_na(df)
+    utils.test_data_na(df)
 
     drop_1 = []
     drop_2 = []
@@ -698,37 +557,60 @@ if __name__ == "__main__":
 
     cols = []
 
-    # start of the 3-set columns
-    # df.columns[17]
-
     for i, col in enumerate(df.columns[17:]):
         if i != 0 and i % 3 == 0:
-            test_column_pair(cols)
-            drop_append(cols, drop_1, drop_2, drop_3)
+            utils.test_column_pair(cols)
+            utils.drop_append(cols, drop_1, drop_2, drop_3)
 
             cols = [col]
         else:
             cols.append(col)
 
-    test_column_pair(cols)
-    drop_append(cols, drop_1, drop_2, drop_3)
+    utils.test_column_pair(cols)
+    utils.drop_append(cols, drop_1, drop_2, drop_3)
 
     base_set = df.drop(drop_1, axis=1)
     middle_set = df.drop(drop_2, axis=1)
     final_set = df.drop(drop_3, axis=1)
 
-    rename_columns(base_set)
-    rename_columns(middle_set)
-    rename_columns(final_set)
+    utils.rename_columns(base_set)
+    utils.rename_columns(middle_set)
+    utils.rename_columns(final_set)
 
-    base_set["measure"] = "0W"
-    middle_set["measure"] = "6W"
-    final_set["measure"] = "12W"
+    base_set["measure"] = "0w"
+    middle_set["measure"] = "6w"
+    final_set["measure"] = "12w"
 
     df = base_set.append(middle_set).append(final_set)
     df = df.reset_index(drop=True)
 
+    return df
+
+
+if __name__ == "__main__":
+    reports = {}
+
+    print("reading statistics.....")
+
+    with open(f"statistics/statistic_simple.json", "r") as f:
+        reports["simple"] = json.load(f)
+
+    with open(f"statistics/statistic_delta_6W.json", "r") as f:
+        reports["delta_6w"] = json.load(f)
+
+    with open(f"statistics/statistic_delta_12W.json", "r") as f:
+        reports["delta_12w"] = json.load(f)
+
+    with open(f"statistics/statistic_delta_6W_12W.json", "r") as f:
+        reports["delta_6w_12w"] = json.load(f)
+
+    with open(f"statistics/statistic_delta_0W_6W_12W.json", "r") as f:
+        reports["delta_0w_6w_12w"] = json.load(f)
+
+    print("reading data.....")
+    df = read_data_csv()
+
     print("ready to launch the program.....")
 
-    app = MyApp(stat, df)
+    app = MyApp(reports, df)
     app.window.mainloop()

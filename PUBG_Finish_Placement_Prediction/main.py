@@ -87,8 +87,8 @@ def plot_scatter_correlation(colx, coly, sample_size=1000):
 
     s, i, _, _, _ = stats.linregress(x, y)
 
-    sns.scatterplot(x=x, y=y, ax=ax)
-    # ax.scatter(x=x, y=y)
+    # sns.scatterplot(x=x, y=y, ax=ax)
+    ax.scatter(x=x, y=y)
 
     ax.plot(x, x * s + i, color="k")
 

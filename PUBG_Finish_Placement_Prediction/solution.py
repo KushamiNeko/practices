@@ -1,5 +1,4 @@
-# %%
-
+#######################################################
 import gc
 import os
 
@@ -18,7 +17,38 @@ from sklearn.preprocessing import LabelEncoder
 
 matplotlib.use("gtk3agg")
 
-# %%
+#######################################################
+
+
+def plot_scatter_correlation(colx, coly, sample_size=1000):
+
+    choice = np.random.randint(0, len(train), size=sample_size)
+
+    x = train.iloc[choice][colx]
+    y = train.iloc[choice][coly]
+
+    yrange = y.max() - y.min()
+    yratio = 0.1
+
+    f, ax = plt.subplots()
+
+    s, i, _, _, _ = stats.linregress(x, y)
+
+    ax.scatter(x=x, y=y)
+
+    ax.plot(x, x * s + i, color="k")
+
+    ax.set_xlabel(colx)
+    ax.set_ylabel(coly)
+
+    ax.set_ylim((y.min() - (yrange * yratio), y.max() + (yrange * yratio)))
+
+    plt.show()
+
+    return f
+
+
+#######################################################
 
 
 root = os.path.join(
@@ -31,37 +61,494 @@ TEST_FILE = os.path.join(root, "test_V2.csv")
 assert os.path.exists(TRAIN_FILE)
 assert os.path.exists(TEST_FILE)
 
-# %%
+#######################################################
 
 train = pd.read_csv(TRAIN_FILE)
 
-# %%
+#######################################################
 
-# all_data = pd.read_csv("../input/train_V2.csv")
-# all_data = reduce_mem_usage(all_data)
-X = train.copy()
+encoder = LabelEncoder()
+encoder.fit(train["matchType"])
 
-# %%
+#######################################################
 
-X = X[X["maxPlace"] > 1]
-X = X[X["winPlacePerc"].notnull()]
+# corr = train.corr(method="spearman")
+
+#######################################################
+
+# corr["winPlacePerc"].sort_values(ascending=False)
+
+# winPlacePerc       1.000000
+# walkDistance       0.866519
+# boosts             0.681427
+# weaponsAcquired    0.666185
+# heals              0.565478
+# longestKill        0.456501
+# damageDealt        0.448591
+# kills              0.432542
+# rideDistance       0.432261
+# killStreaks        0.393392
+# assists            0.299501
+# headshotKills      0.282433
+# DBNOs              0.258729
+# revives            0.253557
+# swimDistance       0.234142
+# vehicleDestroys    0.073959
+# rankPoints         0.064634
+# numGroups          0.050263
+# maxPlace           0.045357
+# winPoints          0.039435
+# roadKills          0.038608
+# teamKills          0.023208
+# killPoints         0.016520
+# matchDuration     -0.002240
+# killPlace         -0.720767
+
+#######################################################
+
+
+def preprocessing(X, encoder=encoder):
+    id_columns = [
+        "Id",
+        "groupId",
+        "matchId",
+    ]
+
+    deprecated_columns = [
+        "rankPoints",
+        "winPoints",
+        "killPoints",
+    ]
+
+    uncorrelated_columns = [
+        # "teamKills",
+        # "roadKills",
+        "matchDuration",
+        # "maxPlace",
+        # "numGroups",
+        # "vehicleDestroys",
+    ]
+
+    X = X.drop(X[X["winPlacePerc"].isna()].index)
+
+    X = X.drop(deprecated_columns, axis=1)
+    X = X.drop(uncorrelated_columns, axis=1)
+
+    X["matchType"] = encoder.fit_transform(X["matchType"])
+
+    return X
+
+
+#######################################################
 
 gc.collect()
 
-# %%
+X = train.copy()
 
-encoder = LabelEncoder()
-encoder.fit(X["matchType"])
+#######################################################
 
-X["matchType"] = encoder.fit_transform(X["matchType"])
+match_aggs = {
+    "teamKills": ["min", "max", "median", "mean", "std", "skew"],
+    "roadKills": ["min", "max", "median", "mean", "std", "skew"],
+    "vehicleDestroys": ["min", "max", "median", "mean", "std", "skew"],
+    "numGroups": ["min", "max", "median", "mean", "std", "skew"],
+    "maxPlace": ["min", "max", "median", "mean"],
+    "walkDistance": ["min", "max", "median", "mean", "std", "skew"],
+    "boosts": ["min", "max", "median", "mean", "std", "skew"],
+    "weaponsAcquired": ["min", "max", "median", "mean", "std", "skew"],
+    "heals": ["min", "max", "median", "mean", "std", "skew"],
+    "longestKill": ["min", "max", "median", "mean", "std", "skew"],
+    "damageDealt": ["min", "max", "median", "mean", "std", "skew"],
+    "kills": ["min", "max", "median", "mean", "std", "skew"],
+    "rideDistance": ["min", "max", "median", "mean", "std", "skew"],
+    "killStreaks": ["min", "max", "median", "mean", "std", "skew"],
+    "assists": ["min", "max", "median", "mean", "std", "skew"],
+    "headshotKills": ["min", "max", "median", "mean", "std", "skew"],
+    "DBNOs": ["min", "max", "median", "mean", "std", "skew"],
+    "revives": ["min", "max", "median", "mean", "std", "skew"],
+    "swimDistance": ["min", "max", "median", "mean", "std", "skew"],
+    "killPlace": ["min", "max", "median", "mean", "std", "skew"],
+}
 
-# %%
+group_aggs = {
+    "teamKills": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "roadKills": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "vehicleDestroys": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "walkDistance": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "boosts": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "weaponsAcquired": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "heals": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "longestKill": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "damageDealt": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "kills": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "rideDistance": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "killStreaks": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "assists": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "headshotKills": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "DBNOs": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "revives": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "swimDistance": ["min", "max", "median", "mean", "std", "skew", "sum"],
+    "killPlace": ["min", "max", "median", "mean", "std", "skew"],
+}
 
-# match_size = X.groupby(["matchId"]).size().reset_index(name="matchSize")
-# X = pd.merge(X, match_size, how="left", on=["matchId"])
-# X[["Id", "matchSize"]]
+match_stats = X.groupby("matchId").agg(match_aggs)
+group_stats = X.groupby(["matchId", "groupId"]).agg(group_aggs)
 
-# %%
+#######################################################
+
+match_columns = [f"match_{k}_{v}" for k in match_aggs.keys() for v in match_aggs[k]]
+match_stats.columns = match_columns
+
+group_columns = [f"group_{k}_{v}" for k in group_aggs.keys() for v in group_aggs[k]]
+group_stats.columns = group_columns
+
+#######################################################
+#######################################################
+#######################################################
+
+# df_agg = X.groupby("matchId").agg(aggs)
+# df_agg = X.groupby(["matchId", "groupId"]).agg(aggs)
+# df_agg = X.groupby("groupId").agg(aggs)
+
+
+# def agg(df):
+
+# aggs = {
+# "passband": ["min", "max", "median", "mean", "std", "skew"],
+# "flux": ["min", "max", "mean", "median", "std", "skew"],
+# "flux_err": ["min", "max", "mean", "median", "std", "skew"],
+# "detected": ["sum"],
+# }
+
+# df_agg = df.groupby("object_id").agg(aggs)
+
+# new_columns = [k + "_" + v for k in aggs.keys() for v in aggs[k]]
+# df_agg.columns = new_columns
+
+# return df_agg
+
+# X = df_agg.reset_index().merge(right=dfm, on="object_id", how="outer")
+
+
+#######################################################
+
+
+def player_statistic(X):
+    X["headshot_rate"] = X["headshotKills"] / (X["kills"] + 0.00001)
+    X["kill_streak_rate"] = X["killStreaks"] / (X["kills"] + 0.00001)
+    X["kills_assists"] = X["kills"] + X["assists"]
+    X["heals_boosts"] = X["heals"] + X["boosts"]
+    X["total_distance"] = X["walkDistance"] + X["rideDistance"] + X["swimDistance"]
+    X["kills_assists_per_heal_boost"] = X["kills_assists"] / (X["heals_boosts"] + 1)
+    X["damageDealt_per_heal_boost"] = X["damageDealt"] / (X["heals_boosts"] + 1)
+    X["road_kills_per_rideDistance"] = X["roadKills"] / (X["rideDistance"] + 0.01)
+    X["maxPlace_per_numGroups"] = X["maxPlace"] / X["numGroups"]
+    X["assists_per_kill"] = X["assists"] / (X["kills"] + X["assists"] + 0.0001)
+    X["killPlace"] = X["killPlace"] - 1
+    return X
+
+
+def group_statistic(X):
+    group_cols = [
+        "matchId",
+        "groupId",
+        "matchDuration",
+        "matchType",
+        "maxPlace",
+        "numGroups",
+        "maxPlace_per_numGroups",
+        "winPlacePerc",
+        "killPlace",
+    ]
+    if "winPlacePerc" not in X.columns:
+        group_cols.remove("winPlacePerc")
+
+    pl_data_grouped = X[group_cols].groupby(["matchId", "groupId"])
+    gr_data = pl_data_grouped.first()
+    gr_data.drop(columns="killPlace", inplace=True)
+
+    gr_data["raw_groupSize"] = pl_data_grouped["numGroups"].count()
+    gr_data["groupSize"] = gr_data["raw_groupSize"]
+    gr_data["group_size_overflow"] = (gr_data["groupSize"] > 4).astype(np.int8)
+    gr_data.loc[
+        gr_data["groupSize"] > 4, ["groupSize"]
+    ] = 2  # replace group sizes with median, since it's a bug, max group size is 4
+
+    gr_data["meanGroupSize"] = gr_data.groupby("matchId")["groupSize"].transform(
+        np.mean
+    )
+    gr_data["medianGroupSize"] = gr_data.groupby("matchId")["groupSize"].transform(
+        np.median
+    )
+    # gr_data['maxGroupSize'] = gr_data.groupby('matchId')['groupSize'].transform(np.max)
+    # gr_data['minGroupSize'] = gr_data.groupby('matchId')['groupSize'].transform(np.min)
+    gr_data["maxKillPlace"] = (
+        pl_data_grouped["killPlace"].max().groupby("matchId").transform(np.max)
+    )
+
+    gr_data["totalPlayers"] = gr_data.groupby("matchId")["groupSize"].transform(sum)
+    # some matches have missing players, so I adjust the total number of players to account for that
+    gr_data["totalPlayersAdjusted"] = (
+        gr_data["maxPlace"].astype(float)
+        * gr_data["totalPlayers"]
+        / (gr_data["numGroups"] + 0.01)
+    )
+    # trim total number to 100 as it can't be higher than that
+    gr_data["totalPlayersAdjusted"] = gr_data["totalPlayersAdjusted"].apply(
+        lambda x: np.minimum(100.0, x)
+    )
+    # gr_data.drop(columns=['totalPlayers'], inplace=True)
+    gr_data["num_opponents"] = gr_data["totalPlayersAdjusted"] - gr_data["groupSize"]
+
+    X = X.merge(
+        gr_data[
+            [
+                "num_opponents",
+                "totalPlayersAdjusted",
+                "groupSize",
+                "raw_groupSize",
+                "maxKillPlace",
+            ]
+        ],
+        on=["matchId", "groupId"],
+    )
+
+    print("group size counts:")
+    print(X["raw_groupSize"].value_counts())
+
+    # normalizing some features
+    X["revives_per_groupSize"] = X["revives"] / (X["groupSize"] - 1 + 0.001)
+    X["kills_assists_norm_both"] = (
+        X["kills_assists"].astype(np.float32) / X["num_opponents"] / X["matchDuration"]
+    )
+
+    X["killPlace_norm"] = X["killPlace"] / (X["maxKillPlace"] + 0.000001)
+
+    # X['kills_assists_norm_opp_n'] = X['kills_assists'].astype(np.float32) / X['num_opponents']
+    # X['kills_assists_norm_dur'] = X['kills_assists'].astype(np.float32) / X['matchDuration']
+    X["damageDealt_norm_both"] = (
+        X["damageDealt"].astype(np.float32) / X["num_opponents"] / X["matchDuration"]
+    )
+    # X['damageDealt_norm_opp_n'] = X['damageDealt'].astype(np.float32) / X['num_opponents']
+    # X['damageDealt_norm_dur'] = X['damageDealt'].astype(np.float32) / X['matchDuration']
+    X["DBNOs_norm"] = (
+        X["DBNOs"].astype(np.float32) / X["num_opponents"] / X["matchDuration"]
+    )
+    X["heals_norm"] = X["heals"].astype(np.float32) / X["matchDuration"]
+    X["boosts_norm"] = (
+        X["boosts"].astype(np.float32) / X["matchDuration"]
+    )  # - lowers correlation, don't do
+    X["walkDistance_norm"] = X["walkDistance"].astype(np.float32) / X["matchDuration"]
+    X["rideDistance_norm"] = X["rideDistance"].astype(np.float32) / X["matchDuration"]
+    X["swimDistance_norm"] = X["swimDistance"].astype(np.float32) / X["matchDuration"]
+
+    # gr_data.drop(columns=['groupSize'], inplace=True)
+
+    gr_data = reduce_mem_usage(gr_data)
+    gr_data.drop(columns=list(set(gr_data.columns) & all_useless_cols))
+    return gr_data, X
+
+
+def group_and_match_statistics(data, gr_data):
+
+    group_stats_cols = [
+        "assists",
+        "boosts",
+        "DBNOs",
+        "killPoints",
+        "longestKill",
+        "rankPoints",
+        "road_kills_per_rideDistance",
+        "kills_assists_norm_both",
+        "damageDealt_norm_both",
+        "DBNOs_norm",
+        "heals_boosts",
+        "assists_per_kill",
+        "killPlace_norm",
+        "revives",
+        "roadKills",
+        "teamKills",
+        "vehicleDestroys",
+        "weaponsAcquired",
+        "winPoints",
+        "headshot_rate",
+        "kill_streak_rate",
+        "kills_assists",
+        "heals_norm",
+        "walkDistance_norm",
+        "rideDistance_norm",
+        "swimDistance_norm",
+        "damageDealt_per_heal_boost",
+        "kills_assists_per_heal_boost",
+    ]
+    # removed damageDealt
+    match_stats_cols = [
+        "assists",
+        "boosts",
+        "DBNOs",
+        "killPoints",
+        "longestKill",
+        "rankPoints",
+        "road_kills_per_rideDistance",
+        "kills_assists_norm_both",
+        "damageDealt_norm_both",
+        "DBNOs_norm",
+        "heals_boosts",
+        "assists_per_kill",
+        "revives",
+        "roadKills",
+        "teamKills",
+        "vehicleDestroys",
+        "weaponsAcquired",
+        "winPoints",
+        "headshot_rate",
+        "kill_streak_rate",
+        "kills_assists",
+        "heals_norm",
+        "walkDistance_norm",
+        "rideDistance_norm",
+        "swimDistance_norm",
+        "damageDealt_per_heal_boost",
+        "kills_assists_per_heal_boost",
+    ]
+
+    pl_data_grouped_by_group = data.groupby(["matchId", "groupId"])
+    pl_data_grouped_by_match = data.groupby(["matchId"])
+
+    # group_sizes = pl_data_grouped_by_group['groupSize'].count().values.reshape([-1])
+    # fixed_group_sizes = pl_data_grouped_by_group['groupSize'].first().values.reshape([-1])
+    # sum_multipliers = fixed_group_sizes.astype(np.float32) / group_sizes
+    # print('min multiplier: {:.2f}, max multiplier: {:.2f}'.format(np.min(sum_multipliers), np.max(sum_multipliers)))
+    # print('min group size: {:d}, max group size: {:d}'.format(np.min(group_sizes), np.max(group_sizes)))
+    # print('min fixed group size: {:d}, max fixed group size: {:d}'.format(np.min(fixed_group_sizes), np.max(fixed_group_sizes)))
+    # print(pd.Series(sum_multipliers).value_counts())
+
+    group_funcs = {"min": np.min, "max": np.max, "sum": np.sum, "median": np.mean}
+    match_funcs = {
+        "min": np.min,
+        "max": np.max,
+        "sum": np.sum,
+        "median": np.median,
+        "std": np.std,
+    }
+    extra_group_stats = (
+        pl_data_grouped_by_group[["matchId", "groupId"]].first().reset_index(drop=True)
+    )
+    extra_match_stats = (
+        pl_data_grouped_by_match[["matchId"]].first().reset_index(drop=True)
+    )
+
+    for colname in group_stats_cols:
+        for f_name, func in group_funcs.items():
+            gr_col_name = f_name + "_group_" + colname
+            if (gr_col_name not in all_useless_cols) or (
+                (gr_col_name + "_rank") not in all_useless_cols
+            ):
+                if func is not sum:
+                    extra_group_stats[gr_col_name] = (
+                        pl_data_grouped_by_group[colname].agg(func).values
+                    )
+                else:
+                    extra_group_stats[gr_col_name] = (
+                        pl_data_grouped_by_group[colname].agg(func).values
+                        * sum_multipliers
+                    )
+
+    for colname in match_stats_cols:
+        for f_name, func in match_funcs.items():
+            m_col_name = f_name + "_match_" + colname
+            if m_col_name not in all_useless_cols:
+                if func is np.std:
+                    extra_match_stats[m_col_name] = (
+                        pl_data_grouped_by_match[colname].agg(func).fillna(0).values
+                    )
+                elif func is np.min:
+                    if m_col_name in min_match_useful_cols:
+                        extra_match_stats[m_col_name] = (
+                            pl_data_grouped_by_match[colname].agg(func).values
+                        )
+                else:
+                    extra_match_stats[m_col_name] = (
+                        pl_data_grouped_by_match[colname].agg(func).values
+                    )
+
+    extra_group_stats.set_index(["matchId", "groupId"], inplace=True)
+    extra_match_stats.set_index(["matchId"], inplace=True)
+
+    pl_data_grouped_by_group = None
+    pl_data_grouped_by_match = None
+
+    select_cols = []
+    for col in extra_group_stats.columns:
+        if ((col + "_rank") not in all_useless_cols) and (
+            col not in ["matchId", "groupId"]
+        ):
+            select_cols.append(col)
+
+    # adding rank information
+    rank_data = extra_group_stats.groupby(["matchId"])
+    rank_data = rank_data[select_cols].rank() - 1  # method='dense'
+    gc.collect()
+    max_rank_data = rank_data.groupby(["matchId"]).transform(np.max)
+    rank_data = rank_data / (max_rank_data + 0.0001)
+    max_rank_data = None
+    gc.collect()
+    print("rank data created")
+
+    gr_col_to_drop = list(set(extra_group_stats.columns) & all_useless_cols)
+    extra_group_stats.drop(columns=gr_col_to_drop, inplace=True)
+    gc.collect()
+
+    extra_group_stats = extra_group_stats.join(
+        rank_data, on=["matchId", "groupId"], rsuffix="_rank"
+    )
+    extra_group_stats.reset_index(
+        level=1, inplace=True
+    )  # put groupId back into the columns
+
+    rank_data = None
+    gc.collect()
+    print("rank data merged")
+    extra_group_stats = reduce_mem_usage(extra_group_stats)
+    extra_match_stats = reduce_mem_usage(extra_match_stats)
+
+    merged_features = extra_group_stats.merge(extra_match_stats, on=["matchId"])
+    extra_group_stats = None
+    extra_match_stats = None
+    gc.collect()
+    print("extra match and group stats merged")
+    merged_features = merged_features.merge(gr_data, on=["matchId", "groupId"])
+    gr_data = None
+    gc.collect()
+    print("group data and stats merged")
+
+    # one hot encoding of match type
+    cats = merged_features["matchType"].unique()
+    cats = set(cats) - set(all_useless_cols)
+    encoded_data = np.empty(shape=(merged_features.shape[0], 0), dtype=np.int8)
+    for category in cats:
+        encoded_data = np.c_[
+            encoded_data,
+            (merged_features[["matchType"]] == category)
+            .values.reshape(-1, 1)
+            .astype(np.int8),
+        ]
+    encoded_data = pd.DataFrame(
+        encoded_data, columns=cats, index=merged_features.index, dtype=np.int8
+    )
+    print("matchType data created")
+    for col in encoded_data.columns:
+        merged_features[col] = encoded_data[col]
+    encoded_data = None
+    gc.collect()
+    print("match type data merged")
+    cols_to_drop = ["matchType"]
+    merged_features = merged_features.drop(columns=cols_to_drop)
+
+    return merged_features
+
+
+#######################################################
 
 
 def reduce_mem_usage(df):
@@ -107,542 +594,4 @@ def reduce_mem_usage(df):
     return df
 
 
-def featureModify(all_data):
-    # if isTrain:
-    # all_data = pd.read_csv("../input/train_V2.csv")
-    # all_data = all_data[all_data["maxPlace"] > 1]
-    # all_data = reduce_mem_usage(all_data)
-    # all_data = all_data[all_data["winPlacePerc"].notnull()]
-    # else:
-    # all_data = pd.read_csv("../input/test_V2.csv")
-
-    # all_data["matchType"] = all_data["matchType"].map(
-    # {
-    # "crashfpp": 1,
-    # "crashtpp": 2,
-    # "duo": 3,
-    # "duo-fpp": 4,
-    # "flarefpp": 5,
-    # "flaretpp": 6,
-    # "normal-duo": 7,
-    # "normal-duo-fpp": 8,
-    # "normal-solo": 9,
-    # "normal-solo-fpp": 10,
-    # "normal-squad": 11,
-    # "normal-squad-fpp": 12,
-    # "solo": 13,
-    # "solo-fpp": 14,
-    # "squad": 15,
-    # "squad-fpp": 16,
-    # }
-    # )
-
-    all_data = reduce_mem_usage(all_data)
-
-    # print("Match size")
-    matchSizeData = all_data.groupby(["matchId"]).size().reset_index(name="matchSize")
-    all_data = pd.merge(all_data, matchSizeData, how="left", on=["matchId"])
-    del matchSizeData
-    gc.collect()
-
-    all_data.loc[(all_data["rankPoints"] == -1), "rankPoints"] = 0
-    all_data["_killPoints_rankpoints"] = all_data["rankPoints"] + all_data["killPoints"]
-
-    all_data["_Kill_headshot_Ratio"] = all_data["kills"] / all_data["headshotKills"]
-    all_data["_killStreak_Kill_ratio"] = all_data["killStreaks"] / all_data["kills"]
-    all_data["_totalDistance"] = (
-        0.25 * all_data["rideDistance"]
-        + all_data["walkDistance"]
-        + all_data["swimDistance"]
-    )
-    all_data["_killPlace_MaxPlace_Ratio"] = all_data["killPlace"] / all_data["maxPlace"]
-    all_data["_totalDistance_weaponsAcq_Ratio"] = (
-        all_data["_totalDistance"] / all_data["weaponsAcquired"]
-    )
-    all_data["_walkDistance_heals_Ratio"] = all_data["walkDistance"] / all_data["heals"]
-    all_data["_walkDistance_kills_Ratio"] = all_data["walkDistance"] / all_data["kills"]
-    all_data["_kills_walkDistance_Ratio"] = all_data["kills"] / all_data["walkDistance"]
-    all_data["_totalDistancePerDuration"] = (
-        all_data["_totalDistance"] / all_data["matchDuration"]
-    )
-    all_data["_killPlace_kills_Ratio"] = all_data["killPlace"] / all_data["kills"]
-    all_data["_walkDistancePerDuration"] = (
-        all_data["walkDistance"] / all_data["matchDuration"]
-    )
-    all_data["walkDistancePerc"] = (
-        all_data.groupby("matchId")["walkDistance"].rank(pct=True).values
-    )
-    all_data["killPerc"] = all_data.groupby("matchId")["kills"].rank(pct=True).values
-    all_data["killPlacePerc"] = (
-        all_data.groupby("matchId")["killPlace"].rank(pct=True).values
-    )
-    all_data["weaponsAcquired"] = (
-        all_data.groupby("matchId")["weaponsAcquired"].rank(pct=True).values
-    )
-    all_data["_walkDistance_kills_Ratio2"] = (
-        all_data["walkDistancePerc"] / all_data["killPerc"]
-    )
-    all_data["_kill_kills_Ratio2"] = all_data["killPerc"] / all_data["walkDistancePerc"]
-    all_data["_killPlace_walkDistance_Ratio2"] = (
-        all_data["walkDistancePerc"] / all_data["killPlacePerc"]
-    )
-    all_data["_killPlace_kills_Ratio2"] = (
-        all_data["killPlacePerc"] / all_data["killPerc"]
-    )
-    all_data["_totalDistance"] = (
-        all_data.groupby("matchId")["_totalDistance"].rank(pct=True).values
-    )
-    all_data["_walkDistance_kills_Ratio3"] = (
-        all_data["walkDistancePerc"] / all_data["kills"]
-    )
-    all_data["_walkDistance_kills_Ratio4"] = (
-        all_data["kills"] / all_data["walkDistancePerc"]
-    )
-    all_data["_walkDistance_kills_Ratio5"] = (
-        all_data["killPerc"] / all_data["walkDistance"]
-    )
-    all_data["_walkDistance_kills_Ratio6"] = (
-        all_data["walkDistance"] / all_data["killPerc"]
-    )
-
-    all_data[all_data == np.Inf] = np.NaN
-    all_data[all_data == np.NINF] = np.NaN
-    all_data.fillna(0, inplace=True)
-
-    features = list(all_data.columns)
-    features.remove("Id")
-    features.remove("matchId")
-    features.remove("groupId")
-    features.remove("matchSize")
-    features.remove("matchType")
-    # if isTrain:
-        # features.remove("winPlacePerc")
-
-    print("Mean Data")
-    meanData = all_data.groupby(["matchId", "groupId"])[features].agg("mean")
-    meanData = reduce_mem_usage(meanData)
-    meanData = meanData.replace([np.inf, np.NINF, np.nan], 0)
-    meanDataRank = meanData.groupby("matchId")[features].rank(pct=True).reset_index()
-    meanDataRank = reduce_mem_usage(meanDataRank)
-    all_data = pd.merge(
-        all_data,
-        meanData.reset_index(),
-        suffixes=["", "_mean"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del meanData
-    gc.collect()
-    all_data = all_data.drop(
-        [
-            "vehicleDestroys_mean",
-            "rideDistance_mean",
-            "roadKills_mean",
-            "rankPoints_mean",
-        ],
-        axis=1,
-    )
-    all_data = pd.merge(
-        all_data,
-        meanDataRank,
-        suffixes=["", "_meanRank"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del meanDataRank
-    gc.collect()
-    all_data = all_data.drop(["numGroups_meanRank", "rankPoints_meanRank"], axis=1)
-
-    all_data = all_data.join(
-        reduce_mem_usage(
-            all_data.groupby("matchId")[features]
-            .rank(ascending=False)
-            .add_suffix("_rankPlace")
-            .astype(int)
-        )
-    )
-
-    print("Std Data")
-    stdData = (
-        all_data.groupby(["matchId", "groupId"])[features]
-        .agg("std")
-        .replace([np.inf, np.NINF, np.nan], 0)
-    )
-    stdDataRank = reduce_mem_usage(
-        stdData.groupby("matchId")[features].rank(pct=True)
-    ).reset_index()
-    del stdData
-    gc.collect()
-    all_data = pd.merge(
-        all_data,
-        stdDataRank,
-        suffixes=["", "_stdRank"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del stdDataRank
-    gc.collect()
-
-    print("Max Data")
-    maxData = all_data.groupby(["matchId", "groupId"])[features].agg("max")
-    maxData = reduce_mem_usage(maxData)
-    maxDataRank = maxData.groupby("matchId")[features].rank(pct=True).reset_index()
-    maxDataRank = reduce_mem_usage(maxDataRank)
-    all_data = pd.merge(
-        all_data,
-        maxData.reset_index(),
-        suffixes=["", "_max"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del maxData
-    gc.collect()
-    all_data = all_data.drop(
-        [
-            "assists_max",
-            "killPoints_max",
-            "headshotKills_max",
-            "numGroups_max",
-            "revives_max",
-            "teamKills_max",
-            "roadKills_max",
-            "vehicleDestroys_max",
-        ],
-        axis=1,
-    )
-    all_data = pd.merge(
-        all_data,
-        maxDataRank,
-        suffixes=["", "_maxRank"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del maxDataRank
-    gc.collect()
-    all_data = all_data.drop(
-        [
-            "roadKills_maxRank",
-            "matchDuration_maxRank",
-            "maxPlace_maxRank",
-            "numGroups_maxRank",
-        ],
-        axis=1,
-    )
-
-    print("Min Data")
-    minData = all_data.groupby(["matchId", "groupId"])[features].agg("min")
-    minData = reduce_mem_usage(minData)
-    minDataRank = minData.groupby("matchId")[features].rank(pct=True).reset_index()
-    minDataRank = reduce_mem_usage(minDataRank)
-    all_data = pd.merge(
-        all_data,
-        minData.reset_index(),
-        suffixes=["", "_min"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del minData
-    gc.collect()
-    all_data = all_data.drop(
-        [
-            "heals_min",
-            "killStreaks_min",
-            "killPoints_min",
-            "maxPlace_min",
-            "revives_min",
-            "headshotKills_min",
-            "weaponsAcquired_min",
-            "_walkDistance_kills_Ratio_min",
-            "rankPoints_min",
-            "matchDuration_min",
-            "teamKills_min",
-            "numGroups_min",
-            "assists_min",
-            "roadKills_min",
-            "vehicleDestroys_min",
-        ],
-        axis=1,
-    )
-    all_data = pd.merge(
-        all_data,
-        minDataRank,
-        suffixes=["", "_minRank"],
-        how="left",
-        on=["matchId", "groupId"],
-    )
-    del minDataRank
-    gc.collect()
-    all_data = all_data.drop(
-        [
-            "killPoints_minRank",
-            "matchDuration_minRank",
-            "maxPlace_minRank",
-            "numGroups_minRank",
-        ],
-        axis=1,
-    )
-
-    print("group Size")
-    groupSize = (
-        all_data.groupby(["matchId", "groupId"]).size().reset_index(name="group_size")
-    )
-    groupSize = reduce_mem_usage(groupSize)
-    all_data = pd.merge(all_data, groupSize, how="left", on=["matchId", "groupId"])
-    del groupSize
-    gc.collect()
-
-    print("Match Mean")
-    matchMeanFeatures = features
-    matchMeanFeatures = [
-        v
-        for v in matchMeanFeatures
-        if v not in ["killPlacePerc", "matchDuration", "maxPlace", "numGroups"]
-    ]
-    matchMeanData = reduce_mem_usage(
-        all_data.groupby(["matchId"])[matchMeanFeatures].transform("mean")
-    ).replace([np.inf, np.NINF, np.nan], 0)
-    all_data = pd.concat([all_data, matchMeanData.add_suffix("_matchMean")], axis=1)
-    del matchMeanData, matchMeanFeatures
-    gc.collect()
-
-    print("matchMax")
-    matchMaxFeatures = [
-        "walkDistance",
-        "kills",
-        "_walkDistance_kills_Ratio",
-        "_kill_kills_Ratio2",
-    ]
-    all_data = pd.merge(
-        all_data,
-        reduce_mem_usage(
-            all_data.groupby(["matchId"])[matchMaxFeatures].agg("max")
-        ).reset_index(),
-        suffixes=["", "_matchMax"],
-        how="left",
-        on=["matchId"],
-    )
-
-    print("match STD")
-    matchMaxFeatures = [
-        "kills",
-        "_walkDistance_kills_Ratio2",
-        "_walkDistance_kills_Ratio",
-        "killPerc",
-        "_kills_walkDistance_Ratio",
-    ]
-    all_data = pd.merge(
-        all_data,
-        reduce_mem_usage(all_data.groupby(["matchId"])[matchMaxFeatures].agg("std"))
-        .reset_index()
-        .replace([np.inf, np.NINF, np.nan], 0),
-        suffixes=["", "_matchSTD"],
-        how="left",
-        on=["matchId"],
-    )
-
-    # drop
-
-    all_data = all_data.drop(["Id", "groupId"], axis=1)
-    all_data = all_data.drop(
-        [
-            "DBNOs",
-            "assists",
-            "headshotKills",
-            "heals",
-            "killPoints",
-            "_killStreak_Kill_ratio",
-            "killStreaks",
-            "longestKill",
-            "revives",
-            "roadKills",
-            "teamKills",
-            "vehicleDestroys",
-            "_walkDistance_kills_Ratio",
-            "weaponsAcquired",
-        ],
-        axis=1,
-    )
-    all_data = all_data.drop(
-        [
-            "_walkDistance_heals_Ratio",
-            "_totalDistancePerDuration",
-            "_killPlace_kills_Ratio",
-            "_totalDistance_weaponsAcq_Ratio",
-            "_killPlace_MaxPlace_Ratio",
-            "_walkDistancePerDuration",
-            "rankPoints",
-            "rideDistance",
-            "boosts",
-            "winPoints",
-            "swimDistance",
-            "_kills_walkDistance_Ratio",
-        ],
-        axis=1,
-    )
-    all_data = all_data.drop(
-        [
-            "_Kill_headshot_Ratio",
-            "maxPlace",
-            "_totalDistance",
-            "numGroups",
-            "walkDistance",
-            "killPlace",
-        ],
-        axis=1,
-    )
-    all_data = reduce_mem_usage(all_data)
-    gc.collect()
-
-    # print("done")
-    # features_label = all_data.columns
-    # features_label = features_label.drop("matchId")
-    # if isTrain:
-        # features_label = features_label.drop("winPlacePerc")
-
-    # gc.collect()
-    # return all_data, features_label
-    return all_data
-
-
-X_train, features_label = featureModify(True)
-
-print("Split time")
-
-
-def split_train_val(data, fraction):
-    matchIds = data["matchId"].unique().reshape([-1])
-    train_size = int(len(matchIds) * fraction)
-
-    random_idx = np.random.RandomState(seed=2).permutation(len(matchIds))
-    train_matchIds = matchIds[random_idx[:train_size]]
-    val_matchIds = matchIds[random_idx[train_size:]]
-
-    data_train = data.loc[data["matchId"].isin(train_matchIds)]
-    data_val = data.loc[data["matchId"].isin(val_matchIds)]
-    return data_train, data_val
-
-
-# # Split the Data by matchId. Thanks to Ivan Batalov for this.
-# X_train, X_train_test = split_train_val(X_train, 0.91)
-# print("Y time")
-# y = X_train['winPlacePerc']
-# y_test = X_train_test['winPlacePerc']
-# print("X_train time")
-# X_train = X_train.drop(columns=['matchId', 'winPlacePerc'])
-# print("X test train time")
-# X_train_test = X_train_test.drop(columns='matchId')
-# print("X test train winPlace remove")
-# X_train_test = X_train_test.drop(columns='winPlacePerc')
-
-# print("X test np time")
-# X_train_test = np.array(X_train_test)
-# print("y test np time")
-# y_test = np.array(y_test)
-
-# #Split the Data again and then join it. I am doing this because If I turn the Pandas DataFrame into Numpy Array with
-# # all rows at once, Kernel will be killed for exceeding 16GB Memory.
-# from sklearn.model_selection import train_test_split
-# X_train, X_train2, y, y2 = train_test_split(X_train, y, test_size=0.1, shuffle=False)
-# print("X_train np time")
-# X_train = np.array(X_train)
-# print("y np time")
-# y = np.array(y)
-
-# print("X_train2 np time")
-# X_train2 = np.array(X_train2)
-# print("y2 np time")
-# y2 = np.array(y2)
-
-# y = np.concatenate((y, y2), axis=0)
-# del y2
-# gc.collect()
-# X_train = np.concatenate((X_train, X_train2), axis=0)
-# del X_train2
-# gc.collect()
-
-
-# train_set = lgb.Dataset(X_train, label=y)
-# del X_train,y
-# gc.collect()
-# valid_set = lgb.Dataset(X_train_test, label=y_test)
-# del X_train_test,y_test
-# gc.collect()
-
-# params = {
-# "objective" : "regression",
-# "metric" : "mae",
-# "num_leaves" : 149,
-# "learning_rate" : 0.03,
-# "bagging_fraction" : 0.9,
-# "bagging_seed" : 0,
-# "num_threads" : 4,
-# "colsample_bytree" : 0.5,
-# 'min_data_in_leaf':1900,
-# 'min_split_gain':0.00011,
-# 'lambda_l2':9
-# }
-
-# model = lgb.train(  params,
-# train_set = train_set,
-# num_boost_round=9400,
-# early_stopping_rounds=200,
-# verbose_eval=100,
-# valid_sets=[train_set,valid_set]
-# )
-
-# del train_set,valid_set
-# gc.collect()
-
-# print("Calculating Feature Importance and save it in a file")
-# featureImp = list(model.feature_importance())
-# featureImp, features_label = zip(*sorted(zip(featureImp, features_label)))
-# with open("FeatureImportance.txt", "w") as text_file:
-# for i in range(len(featureImp)):
-# print(f"{features_label[i]} =  {featureImp[i]}", file=text_file)
-
-# print("Done calculating")
-# del featureImp,features_label
-# gc.collect()
-
-
-# X_test,features_label = featureModify(False)
-# X_test = X_test.drop(columns=['matchId'])
-# X_test = np.array(X_test)
-# y_pred=model.predict(X_test, num_iteration=model.best_iteration)
-# del X_test
-# gc.collect()
-
-# # Insert ID and Predictions into dataframe
-# df_sub = pd.DataFrame()
-
-# df_test = pd.read_csv('../input/test_V2.csv')
-# df_test = reduce_mem_usage(df_test)
-# df_sub['Id'] = df_test['Id']
-# df_sub['winPlacePerc'] = y_pred
-
-# print(df_sub['winPlacePerc'].describe())
-
-
-# df_sub = df_sub.merge(df_test[["Id", "matchId", "groupId", "maxPlace", "numGroups"]], on="Id", how="left")
-# df_sub_group = df_sub.groupby(["matchId", "groupId"]).first().reset_index()
-# df_sub_group["rank"] = df_sub_group.groupby(["matchId"])["winPlacePerc"].rank()
-# df_sub_group = df_sub_group.merge(
-# df_sub_group.groupby("matchId")["rank"].max().to_frame("max_rank").reset_index(),
-# on="matchId", how="left")
-# df_sub_group["adjusted_perc"] = (df_sub_group["rank"] - 1) / (df_sub_group["numGroups"] - 1)
-# df_sub = df_sub.merge(df_sub_group[["adjusted_perc", "matchId", "groupId"]], on=["matchId", "groupId"], how="left")
-# df_sub["winPlacePerc"] = df_sub["adjusted_perc"]
-
-
-# df_sub.loc[df_sub.maxPlace == 0, "winPlacePerc"] = 0
-# df_sub.loc[df_sub.maxPlace == 1, "winPlacePerc"] = 1
-# subset = df_sub.loc[df_sub.maxPlace > 1]
-# gap = 1.0 / (subset.maxPlace.values - 1)
-# new_perc = np.around(subset.winPlacePerc.values / gap) * gap
-# df_sub.loc[df_sub.maxPlace > 1, "winPlacePerc"] = new_perc
-# # Edge case
-# df_sub.loc[(df_sub.maxPlace > 1) & (df_sub.numGroups == 1), "winPlacePerc"] = 0
-# assert df_sub["winPlacePerc"].isnull().sum() == 0
-
-# df_sub[["Id", "winPlacePerc"]].to_csv("submission.csv", index=False)
-# print(df_sub['winPlacePerc'].describe())
+#######################################################
