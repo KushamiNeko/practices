@@ -18,18 +18,20 @@ def clean_data(df):
 
     for i, col in enumerate(df.columns):
         m = regex.match(col)
-        na = df[col][df[col].isnull()]
-        if len(na) > 0:
+        na = df[col][df[col].isna()]
+
+        assert (len(na) > 0) == (df[col].isna().any())
+
+        if df.loc[:, col].isna().any():
             if m is not None:
 
                 pcol = (
                     col[: m.start(1)] + str(int(m.group(1)) - 1) + col[m.start(1) + 1 :]
                 )
 
-                df[col][df[col].isnull()] = df[pcol][df[col].isnull()]
-
+                df.loc[df[col].isna(), col] = df.loc[df[col].isna(), pcol]
             else:
-                raise Exception("\n{}\n{}\n".format(na, m))
+                raise Exception(f"\n{col}\n{m}\n")
 
     return df
 
@@ -37,7 +39,7 @@ def clean_data(df):
 def test_data_na(df):
     for col in df.columns:
         for i, d in enumerate(df[col]):
-            if math.isnan(d):
+            if math.isnan(d) or d == np.nan:
                 raise Exception("data should not be nan, col: {}, {}".format(col, i))
 
 
@@ -73,40 +75,94 @@ def rename_columns(data):
     data.columns = new_cols
 
 
+def remove_outliers_dataframe(df, col):
+    q1 = df[col].quantile(0.25)
+    q3 = df[col].quantile(0.75)
+
+    iqr = q3 - q1
+
+    for num in df[col][(df[col] > q3 + (iqr * 1.5)) | (df[col] < q1 - (iqr * 1.5))]:
+        assert num > (q3 + (iqr * 1.5)) or num < (q1 - (iqr * 1.5))
+
+    df.loc[(df[col] > q3 + (iqr * 1.5)) | (df[col] < q1 - (iqr * 1.5)), col] = np.nan
+
+
+def remove_outliers_series(series):
+    q1 = series.quantile(0.25)
+    q3 = series.quantile(0.75)
+
+    iqr = q3 - q1
+
+    for num in series[(series > q3 + (iqr * 1.5)) | (series < q1 - (iqr * 1.5))]:
+        assert num > (q3 + (iqr * 1.5)) or num < (q1 - (iqr * 1.5))
+
+    series.loc[(series > q3 + (iqr * 1.5)) | (series < q1 - (iqr * 1.5))] = np.nan
+
+
 def significant_test_multiple(df, col):
+    xs = df[df["measure"] == "0w"][col].astype(np.float).reset_index(drop=True)
+    ys = df[df["measure"] == "6w"][col].astype(np.float).reset_index(drop=True)
+    zs = df[df["measure"] == "12w"][col].astype(np.float).reset_index(drop=True)
+
+    mask = ~np.isnan(xs) & ~np.isnan(ys) & ~np.isnan(zs)
+
     _, p = stats.friedmanchisquare(
-        df[df["measure"] == "0w"][col].astype(np.float),
-        df[df["measure"] == "6w"][col].astype(np.float),
-        df[df["measure"] == "12w"][col].astype(np.float),
+        xs[mask],
+        ys[mask],
+        zs[mask],
+        # df[df["measure"] == "0w"][col].astype(np.float),
+        # df[df["measure"] == "6w"][col].astype(np.float),
+        # df[df["measure"] == "12w"][col].astype(np.float),
     )
 
     return p
 
 
-def significant_test_pair(df, col, all_pair=False):
+def significant_test_pair(df, col, all_pair=True):
 
     try:
+        xs = df[df["measure"] == "0w"][col].astype(np.float).reset_index(drop=True)
+        ys = df[df["measure"] == "6w"][col].astype(np.float).reset_index(drop=True)
+
+        mask = ~np.isnan(xs) & ~np.isnan(ys)
+
         _, p_base_middle = stats.wilcoxon(
-            df[df["measure"] == "0w"][col].astype(np.float),
-            df[df["measure"] == "6w"][col].astype(np.float),
+            xs[mask],
+            ys[mask],
+            # df[df["measure"] == "0w"][col].astype(np.float),
+            # df[df["measure"] == "6w"][col].astype(np.float),
         )
     except ValueError as e:
         print(f"{col}: {e}")
         p_base_middle = np.nan
 
     try:
+        xs = df[df["measure"] == "0w"][col].astype(np.float).reset_index(drop=True)
+        ys = df[df["measure"] == "12w"][col].astype(np.float).reset_index(drop=True)
+
+        mask = ~np.isnan(xs) & ~np.isnan(ys)
+
         _, p_base_final = stats.wilcoxon(
-            df[df["measure"] == "0w"][col].astype(np.float),
-            df[df["measure"] == "12w"][col].astype(np.float),
+            # df[df["measure"] == "0w"][col].astype(np.float),
+            # df[df["measure"] == "12w"][col].astype(np.float),
+            xs[mask],
+            ys[mask],
         )
     except ValueError as e:
         print(f"{col}: {e}")
         p_base_final = np.nan
 
     try:
+        xs = df[df["measure"] == "6w"][col].astype(np.float).reset_index(drop=True)
+        ys = df[df["measure"] == "12w"][col].astype(np.float).reset_index(drop=True)
+
+        mask = ~np.isnan(xs) & ~np.isnan(ys)
+
         _, p_middle_final = stats.wilcoxon(
-            df[df["measure"] == "6w"][col].astype(np.float),
-            df[df["measure"] == "12w"][col].astype(np.float),
+            # df[df["measure"] == "6w"][col].astype(np.float),
+            # df[df["measure"] == "12w"][col].astype(np.float),
+            xs[mask],
+            ys[mask],
         )
     except ValueError as e:
         print(f"{col}: {e}")
@@ -127,50 +183,39 @@ def significant_test_pair(df, col, all_pair=False):
     return adj_p[0], adj_p[1]
 
 
-def correlation(df, colx, coly, delta):
+def delta_xy(df, colx, coly, delta):
 
-    base = df[df["measure"] == "0w"]
-    middle = df[df["measure"] == "6w"]
-    final = df[df["measure"] == "12w"]
+    base = df[df["measure"] == "0w"].copy()
+    middle = df[df["measure"] == "6w"].copy()
+    final = df[df["measure"] == "12w"].copy()
 
-    assert delta in (None, "fb", "mb", "mbfb", "bbmbfb")
+    assert delta in (None, "fb", "mb", "mbfb", "bbmbfb", "bfb")
 
     if delta is None:
-        tau, p = stats.kendalltau(df[colx].astype(np.float), df[coly].astype(np.float))
-        return tau, p
+        xs = df[colx].copy()
+        ys = df[coly].copy()
 
     elif delta == "fb":
 
-        fbx = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        fby = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-
-        tau, p = stats.kendalltau(fbx.astype(np.float), fby.astype(np.float))
-
-        return tau, p
+        xs = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
+        ys = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
 
     elif delta == "mb":
 
-        mbx = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        mby = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-
-        tau, p = stats.kendalltau(mbx.astype(np.float), mby.astype(np.float))
-
-        return tau, p
+        xs = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
+        ys = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
 
     elif delta == "mbfb":
 
         mbx = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
         fbx = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
 
-        x = mbx.append(fbx).reset_index(drop=True)
+        xs = mbx.append(fbx).reset_index(drop=True)
 
         mby = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
         fby = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
 
-        y = mby.append(fby).reset_index(drop=True)
-
-        tau, p = stats.kendalltau(x.astype(np.float), y.astype(np.float))
-        return tau, p
+        ys = mby.append(fby).reset_index(drop=True)
 
     elif delta == "bbmbfb":
 
@@ -178,19 +223,38 @@ def correlation(df, colx, coly, delta):
         mbx = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
         fbx = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
 
-        x = bbx.append(mbx).append(fbx).reset_index(drop=True)
+        xs = bbx.append(mbx).append(fbx).reset_index(drop=True)
 
         bby = base[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
         mby = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
         fby = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
 
-        y = bby.append(mby).append(fby).reset_index(drop=True)
+        ys = bby.append(mby).append(fby).reset_index(drop=True)
 
-        tau, p = stats.kendalltau(x.astype(np.float), y.astype(np.float))
-        return tau, p
+    elif delta == "bfb":
+        # xs = base[colx].reset_index(drop=True)
+        # ys = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
+
+        xs = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
+        ys = base[coly].reset_index(drop=True)
 
     else:
-        raise ValueError("invalid op")
+        raise ValueError("invalid delta")
+
+    # mask = ~np.isnan(xs) & ~np.isnan(ys)
+    # return xs[mask], ys[mask]
+    return xs, ys
+
+
+def correlation(df, colx, coly, delta):
+
+    xs, ys = delta_xy(df, colx, coly, delta)
+
+    tau, p = stats.kendalltau(
+        xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+    )
+
+    return tau, p
 
 
 def find_col(df, key_words):
@@ -251,6 +315,28 @@ def bake_correlation_statistic(df, drops, correlation_func, output_file):
 
     with open(f"statistics/{output_file}", "w") as output:
         json.dump(statistic, output, indent=2)
+
+
+def make_intersection(df, reports):
+    intersection = []
+    for col in df.columns:
+        if col in reports:
+            intersection.append(col)
+
+    return intersection
+
+
+def write_time_significant_report(file_name, title, report):
+    if not os.path.exists("reports"):
+        os.makedirs("reports", exist_ok=True)
+
+    with open(f"reports/{file_name}", "w", encoding="utf-8") as f:
+        f.write(f"{title}: {len(report)} features\n")
+        f.write("\n")
+        for r in report:
+            f.write(f"{r[0].strip()}\n")
+            f.write(f"{r[1]:.19f}\n")
+            f.write("\n")
 
 
 def write_friedman_wilcoxon_report(file_name, title, friedman_report, wilcoxon_report):
@@ -380,6 +466,13 @@ def write_kendall_delta_report(file_name, title, kendall_report):
             f.write("\n")
 
 
+def label_length_limit(label, length_limit=50):
+    if len(label) > length_limit:
+        return f"{label[: int(length_limit / 2.0)]}.....{label[-int(length_limit / 2.0) :]}"
+    else:
+        return label
+
+
 def plot_group(
     df,
     col,
@@ -388,17 +481,29 @@ def plot_group(
     linelength=0.7,
     linewidth=2,
     title="",
-    title_len_limit=50,
     title_size=14,
+    remove_outliers=True,
 ):
 
     prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=title_size)
 
+    xs = df[df["measure"] == "0w"][col].astype(np.float).copy().reset_index(drop=True)
+    ys = df[df["measure"] == "6w"][col].astype(np.float).copy().reset_index(drop=True)
+    zs = df[df["measure"] == "12w"][col].astype(np.float).copy().reset_index(drop=True)
+
+    if remove_outliers:
+        remove_outliers_series(xs)
+        remove_outliers_series(ys)
+        remove_outliers_series(zs)
+
     vs = pd.DataFrame(
         {
-            "0W": df[df["measure"] == "0w"][col].astype(np.float),
-            "6W": df[df["measure"] == "6w"][col].astype(np.float),
-            "12W": df[df["measure"] == "12w"][col].astype(np.float),
+            # "0W": df[df["measure"] == "0w"][col].astype(np.float),
+            # "6W": df[df["measure"] == "6w"][col].astype(np.float),
+            # "12W": df[df["measure"] == "12w"][col].astype(np.float),
+            "0W": xs,
+            "6W": ys,
+            "12W": zs,
         }
     )
 
@@ -415,49 +520,7 @@ def plot_group(
         ax = plt.gca()
 
     if title != "":
-        if len(title) <= title_len_limit:
-            ax.set_title(title, fontproperties=prop)
-        else:
-            ax.set_title(
-                title[: int(title_len_limit / 2.0)]
-                + "....."
-                + title[-int(title_len_limit / 2.0) :],
-                fontproperties=prop,
-            )
-
-    ax.set_ylim(top=maxy + (ry * ryratio), bottom=miny - (ry * (ryratio / 2.0)))
-
-    ty = maxy + (ry * 0.1)
-
-    ax.plot(
-        [0, 1], [ty, ty], color="k", linewidth=linewidth / 1.5,
-    )
-
-    ax.text(
-        0.5,
-        ty,
-        s=f"P: {round(p_base_middle, 3):.3f}",
-        color="k",
-        ha="center",
-        va="bottom",
-        fontproperties=prop,
-    )
-
-    ty = maxy + (ry * 0.2)
-
-    ax.plot(
-        [0, 2], [ty, ty], color="k", linewidth=linewidth / 1.5,
-    )
-
-    ax.text(
-        1,
-        ty,
-        s=f"P: {round(p_base_final, 3):.3f}",
-        color="k",
-        ha="center",
-        va="bottom",
-        fontproperties=prop,
-    )
+        ax.set_title(label_length_limit(title), fontproperties=prop)
 
     ax.plot(
         [0 - (linelength / 2.0), 0 + (linelength / 2.0)],
@@ -478,7 +541,46 @@ def plot_group(
         linewidth=linewidth,
     )
 
+    if maxy != miny and maxy > miny:
+        ax.set_ylim(top=maxy + (ry * ryratio), bottom=miny - (ry * (ryratio / 2.0)))
+
     sns.swarmplot(data=vs, color="k", ax=ax, size=point_size)
+
+    ylim_min, ylim_max = ax.get_ylim()
+    ylim_mean = (ylim_max + ylim_min) / 2.0
+    ylim_range = ylim_max - ylim_min
+
+    ty = max(maxy + (ry * 0.1), ylim_mean + (ylim_range * 0.3))
+
+    ax.plot(
+        [0, 1], [ty, ty], color="k", linewidth=linewidth / 1.5,
+    )
+
+    ax.text(
+        0.5,
+        ty,
+        s=f"P: {p_base_middle:.3f}",
+        color="k",
+        ha="center",
+        va="bottom",
+        fontproperties=prop,
+    )
+
+    ty = max(maxy + (ry * 0.2), ylim_mean + (ylim_range * 0.4))
+
+    ax.plot(
+        [0, 2], [ty, ty], color="k", linewidth=linewidth / 1.5,
+    )
+
+    ax.text(
+        1,
+        ty,
+        s=f"P: {p_base_final:.3f}",
+        color="k",
+        ha="center",
+        va="bottom",
+        fontproperties=prop,
+    )
 
 
 def plot_correlation(
@@ -490,55 +592,15 @@ def plot_correlation(
     pointsize=50,
     linewidth=2,
     labelsize=14,
-    label_len_limit=50,
+    remove_outliers=True,
 ):
     prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize)
 
-    base = df[df["measure"] == "0w"]
-    middle = df[df["measure"] == "6w"]
-    final = df[df["measure"] == "12w"]
+    xs, ys = delta_xy(df, colx, coly, delta)
 
-    assert delta in (None, "fb", "mb", "mbfb", "bbmbfb")
-
-    if delta is None:
-        xs = df[colx]
-        ys = df[coly]
-
-    elif delta == "fb":
-
-        xs = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        ys = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-
-    elif delta == "mb":
-
-        xs = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        ys = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-
-    elif delta == "mbfb":
-
-        mbx = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        fbx = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-
-        xs = mbx.append(fbx).reset_index(drop=True)
-
-        mby = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-        fby = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-
-        ys = mby.append(fby).reset_index(drop=True)
-
-    elif delta == "bbmbfb":
-
-        bbx = base[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        mbx = middle[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-        fbx = final[colx].reset_index(drop=True) - base[colx].reset_index(drop=True)
-
-        xs = bbx.append(mbx).append(fbx).reset_index(drop=True)
-
-        bby = base[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-        mby = middle[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-        fby = final[coly].reset_index(drop=True) - base[coly].reset_index(drop=True)
-
-        ys = bby.append(mby).append(fby).reset_index(drop=True)
+    tau, p = stats.kendalltau(
+        xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+    )
 
     maxy = ys.max()
     miny = ys.min()
@@ -546,21 +608,30 @@ def plot_correlation(
     ry = maxy - miny
     ryratio = 0.2
 
-    tau, p = stats.kendalltau(xs, ys)
+    if remove_outliers:
+        remove_outliers_series(xs)
+        remove_outliers_series(ys)
 
-    s, i, _, _, _ = stats.linregress(xs.values, ys.values)
+    mask = ~np.isnan(xs.reset_index(drop=True)) & ~np.isnan(ys.reset_index(drop=True))
+    s, i, _, _, _ = stats.linregress(xs[mask], ys[mask])
+
     xl = np.linspace(xs.min(), xs.max())
 
     if ax is None:
         ax = plt.gca()
 
-    ax.set_ylim(
-        top=maxy + (ry * ryratio),
-        bottom=min(miny, (xs.min() * s) + i) - (ry * (ryratio / 2.0)),
-    )
-
     ax.scatter(xs.values, ys.values, s=pointsize, color="k")
     ax.plot(xl, xl * s + i, color="k", linewidth=linewidth)
+
+    if maxy != miny and maxy > miny:
+        ax.set_ylim(
+            top=maxy + (ry * ryratio),
+            bottom=min(miny, (xs.min() * s) + i) - (ry * (ryratio / 2.0)),
+        )
+
+    ylim_min, ylim_max = ax.get_ylim()
+    ylim_mean = (ylim_max + ylim_min) / 2.0
+    ylim_range = ylim_max - ylim_min
 
     minx, maxx = ax.get_xlim()
     rx = maxx - minx
@@ -577,36 +648,27 @@ def plot_correlation(
 
     ax.text(
         tx,
-        maxy + (ry * (ryratio / 2.0)),
-        s=f"P: {round(p, 3):.3f}\nTAU: {round(tau, 3):.3f}",
+        max(maxy + (ry * (ryratio / 2.0)), ylim_mean + (ylim_range * 0.4)),
+        s=f"P: {p:.3f}\nTAU: {tau:.3f}",
         color="k",
         ha=ha,
         va="bottom",
         fontproperties=prop,
     )
 
-    if len(colx) > label_len_limit:
-        ax.set_xlabel(
-            colx[: int(label_len_limit / 2.0)]
-            + "....."
-            + colx[-int(label_len_limit / 2.0) :],
-            fontproperties=prop,
-        )
-    else:
-        ax.set_xlabel(colx, fontproperties=prop)
-
-    if len(coly) > label_len_limit:
-        ax.set_ylabel(
-            coly[: int(label_len_limit / 2.0)]
-            + "....."
-            + coly[-int(label_len_limit / 2.0) :],
-            fontproperties=prop,
-        )
-    else:
-        ax.set_ylabel(coly, fontproperties=prop)
+    ax.set_xlabel(label_length_limit(colx), fontproperties=prop)
+    ax.set_ylabel(label_length_limit(coly), fontproperties=prop)
 
 
-def plot_group_set(df, output, intersection, num_rows=3, num_cols=2, point_size=10):
+def plot_group_set(
+    df,
+    output,
+    intersection,
+    num_rows=3,
+    num_cols=2,
+    point_size=10,
+    remove_outliers=True,
+):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
 
@@ -638,7 +700,14 @@ def plot_group_set(df, output, intersection, num_rows=3, num_cols=2, point_size=
             r = 0
             c = 0
 
-        plot_group(df, col, ax=axes[r, c], title=col, point_size=point_size)
+        plot_group(
+            df,
+            col,
+            ax=axes[r, c],
+            title=col,
+            point_size=point_size,
+            remove_outliers=remove_outliers,
+        )
 
         c += 1
         if c % num_cols == 0:
@@ -658,12 +727,19 @@ def plot_group_set(df, output, intersection, num_rows=3, num_cols=2, point_size=
 
 
 def plot_correlation_set(
-    df, output, cols, delta, num_rows=3, num_cols=2, point_size=60
+    df,
+    output,
+    cols,
+    delta,
+    num_rows=3,
+    num_cols=2,
+    point_size=60,
+    remove_outliers=True,
 ):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
 
-    assert delta in (None, "fb", "mb", "mbfb", "bbmbfb")
+    # assert delta in (None, "fb", "mb", "mbfb", "bbmbfb")
 
     num_plots = len(list(combinations(list(cols), 2)))
     num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
@@ -681,14 +757,21 @@ def plot_correlation_set(
     repeated = set()
     for colx in cols:
         for coly in cols:
-            if colx == coly:
-                continue
+
+            if delta == "bfb":
+                if colx != coly:
+                    continue
+            else:
+                if colx == coly:
+                    continue
 
             if f"{colx}_{coly}" in repeated or f"{coly}_{colx}" in repeated:
                 continue
 
             tau, p = correlation(df, colx, coly, delta)
             if p > 0.05 or abs(tau) < 0.2:
+                continue
+            if math.isnan(p) or math.isnan(tau):
                 continue
 
             if i % int(num_rows * num_cols) == 0:
@@ -709,7 +792,15 @@ def plot_correlation_set(
                 r = 0
                 c = 0
 
-            plot_correlation(df, coly, colx, delta, ax=axes[r, c], pointsize=point_size)
+            plot_correlation(
+                df,
+                coly,
+                colx,
+                delta,
+                ax=axes[r, c],
+                pointsize=point_size,
+                remove_outliers=remove_outliers,
+            )
 
             c += 1
             if c % num_cols == 0:

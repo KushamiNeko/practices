@@ -1,14 +1,15 @@
 ##################################################
 
+import importlib
+import os
+
+import numpy as np
+
 import matplotlib
 import matplotlib.pyplot as plt
-
 import pandas as pd
-
 import utils
-
-from preprocess import clean_data, test_data_na
-
+from utils import clean_data, test_data_na
 
 matplotlib.use("gtk3agg")
 
@@ -17,9 +18,10 @@ matplotlib.use("gtk3agg")
 
 df = pd.read_csv("data.csv")
 
+##################################################
+
 df = clean_data(df)
 test_data_na(df)
-
 
 ##################################################
 
@@ -90,13 +92,26 @@ df = df.reset_index(drop=True)
 
 ##################################################
 
+drops = ["ID", "measure"]
+
+##################################################
+
+for col in df.columns[17:]:
+    if col in drops:
+        continue
+
+    utils.remove_outliers_dataframe(df, col)
+
+##################################################
+
+
+##################################################
+
 
 max_col_length = max([len(col) for col in df.columns])
 
 time_significant_features_multiple = []
 time_significant_features_pair = []
-
-drops = ["ID", "measure"]
 
 report_multiple = []
 report_pair_bm = []
@@ -146,6 +161,7 @@ additional_cols = [
     utils.find_col(df, ["staphylo"]),
     utils.find_col(df, ["c", "difficile"]),
     utils.find_col(df, ["c", "perfri"]),
+    utils.find_col(df, ["reuteri"]),
 ]
 
 additional_cols
@@ -168,6 +184,21 @@ significant_cols = targets
 
 ##################################################
 
+utils.write_friedman_wilcoxon_report(
+    file_name="Friedman_X_Wilcoxon_0W_vs_6W_report.txt",
+    title="Friedman X Wilcoxon(0W vs 6W)",
+    friedman_report=report_multiple,
+    wilcoxon_report=report_pair_bm,
+)
+
+utils.write_friedman_wilcoxon_report(
+    file_name="Friedman_X_Wilcoxon_0W_vs_12W_report.txt",
+    title="Friedman X Wilcoxon(0W vs 12W)",
+    friedman_report=report_multiple,
+    wilcoxon_report=report_pair_bf,
+)
+
+##################################################
 
 utils.bake_correlation_statistic(
     df,
@@ -208,8 +239,8 @@ utils.bake_correlation_statistic(
 
 delta_corr_6 = {}
 delta_corr_12 = {}
-delta_corr_6_12 = {}
-delta_corr_0_6_12 = {}
+# delta_corr_6_12 = {}
+# delta_corr_0_6_12 = {}
 
 # repeated = set()
 
@@ -229,11 +260,11 @@ for colx in df.columns:
     if delta_corr_12.get(colx, None) is None:
         delta_corr_12[colx] = {}
 
-    if delta_corr_6_12.get(colx, None) is None:
-        delta_corr_6_12[colx] = {}
+    # if delta_corr_6_12.get(colx, None) is None:
+    # delta_corr_6_12[colx] = {}
 
-    if delta_corr_0_6_12.get(colx, None) is None:
-        delta_corr_0_6_12[colx] = {}
+    # if delta_corr_0_6_12.get(colx, None) is None:
+    # delta_corr_0_6_12[colx] = {}
 
     for coly in df.columns:
 
@@ -263,19 +294,56 @@ for colx in df.columns:
                 "tau": tau,
             }
 
-        tau, p = utils.correlation(df, colx, coly, delta="mbfb")
-        if p <= p_threshold and abs(tau) >= tau_threshold:
-            delta_corr_6_12[colx][coly] = {
-                "p": p,
-                "tau": tau,
-            }
+        # tau, p = utils.correlation(df, colx, coly, delta="mbfb")
+        # if p <= p_threshold and abs(tau) >= tau_threshold:
+        # delta_corr_6_12[colx][coly] = {
+        # "p": p,
+        # "tau": tau,
+        # }
 
-        tau, p = utils.correlation(df, colx, coly, delta="bbmbfb")
-        if p <= p_threshold and abs(tau) >= tau_threshold:
-            delta_corr_0_6_12[colx][coly] = {
-                "p": p,
-                "tau": tau,
-            }
+        # tau, p = utils.correlation(df, colx, coly, delta="bbmbfb")
+        # if p <= p_threshold and abs(tau) >= tau_threshold:
+        # delta_corr_0_6_12[colx][coly] = {
+        # "p": p,
+        # "tau": tau,
+        # }
+
+##################################################
+
+delta_corr_bfb = []
+
+for col in df.columns:
+    if col in drops:
+        continue
+
+    tau, p = utils.correlation(df, col, col, delta="bfb")
+    if p <= p_threshold and abs(tau) >= tau_threshold:
+        delta_corr_bfb.append([col, p, tau])
+
+
+def write_kendall_report(file_name, title, kendall_report):
+    spaces = "  "
+    multiplier = 2
+
+    if not os.path.exists("reports"):
+        os.makedirs("reports", exist_ok=True)
+
+    with open(f"reports/{file_name}", "w", encoding="utf-8") as f:
+        f.write(f"{title}: {len(kendall_report)} sets\n")
+        f.write("\n")
+        for r in kendall_report:
+            f.write(f"{r[0].strip()}\n")
+            f.write(f"{spaces * multiplier * 1}P:   {r[1]:.19f}\n")
+            f.write(f"{spaces * multiplier * 1}TAU: {r[2]:.19f}\n")
+            f.write("\n\n")
+
+
+##################################################
+
+
+write_kendall_report(
+    "Kendall_Delta_0W_VS_12W_0W.txt", "Kendall (0W, 12W - 0W)", delta_corr_bfb
+)
 
 ##################################################
 
@@ -287,26 +355,79 @@ utils.write_kendall_delta_report(
     "Kendall_Delta_12W.txt", "Kendall (12W - 0W)", delta_corr_12
 )
 
-utils.write_kendall_delta_report(
-    "Kendall_Delta_6W_12W.txt", "Kendall (6W - 0W + 12W - 0W)", delta_corr_6_12
+# utils.write_kendall_delta_report(
+# "Kendall_Delta_6W_12W.txt", "Kendall (6W - 0W + 12W - 0W)", delta_corr_6_12
+# )
+
+# utils.write_kendall_delta_report(
+# "Kendall_Delta_0W_6W_12W.txt",
+# "Kendall (0W - 0W + 6W - 0W + 12W - 0W)",
+# delta_corr_0_6_12,
+# )
+
+##################################################
+
+intersection = set(r[0] for r in report_multiple).intersection(
+    set(r[0] for r in report_pair_bm)
 )
 
-utils.write_kendall_delta_report(
-    "Kendall_Delta_0W_6W_12W.txt",
-    "Kendall (0W - 0W + 6W - 0W + 12W - 0W)",
-    delta_corr_0_6_12,
+intersection = utils.make_intersection(df, intersection)
+
+# utils.plot_group_set(
+# df, "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W", intersection, remove_outliers=True,
+# )
+
+utils.plot_group_set(
+    df,
+    "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W",
+    intersection,
+    remove_outliers=False,
+)
+
+
+intersection = set(r[0] for r in report_multiple).intersection(
+    set(r[0] for r in report_pair_bf)
+)
+
+intersection = utils.make_intersection(df, intersection)
+
+# utils.plot_group_set(
+# df, "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W", intersection, remove_outliers=True,
+# )
+
+utils.plot_group_set(
+    df,
+    "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W",
+    intersection,
+    remove_outliers=False,
 )
 
 ##################################################
 
+# utils.plot_correlation_set(df, "charts/Kendall_Delta_6W", significant_cols, delta="mb", remove_outliers=True)
+# utils.plot_correlation_set(
+# df, "charts/Kendall_Delta_12W", significant_cols, delta="fb", remove_outliers=True
+# )
 
-utils.plot_correlation_set(df, "charts/Kendall_Delta_6W", significant_cols, delta="mb")
-utils.plot_correlation_set(df, "charts/Kendall_Delta_12W", significant_cols, delta="fb")
 utils.plot_correlation_set(
-    df, "charts/Kendall_Delta_6W_12W", significant_cols, delta="mbfb"
+    df, "charts/Kendall_Delta_6W", significant_cols, delta="mb", remove_outliers=False
 )
 utils.plot_correlation_set(
-    df, "charts/Kendall_Delta_0W_6W_12W", significant_cols, delta="bbmbfb"
+    df, "charts/Kendall_Delta_12W", significant_cols, delta="fb", remove_outliers=False
+)
+
+##################################################
+
+# utils.plot_correlation_set(
+# df, "charts/Kendall_Delta_0W_VS_12W_0W", significant_cols, delta="bfb", remove_outliers =True,
+# )
+
+utils.plot_correlation_set(
+    df,
+    "charts/Kendall_Delta_0W_VS_12W_0W",
+    significant_cols,
+    delta="bfb",
+    remove_outliers=False,
 )
 
 ##################################################
