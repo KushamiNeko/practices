@@ -118,7 +118,7 @@ def significant_test_multiple(df, col):
     return p
 
 
-def significant_test_pair(df, col, all_pair=True):
+def significant_test_pair(df, col, adjust=True, all_pair=False):
 
     try:
         xs = df[df["measure"] == "0w"][col].astype(np.float).reset_index(drop=True)
@@ -168,19 +168,23 @@ def significant_test_pair(df, col, all_pair=True):
         print(f"{col}: {e}")
         p_middle_final = np.nan
 
-    if all_pair:
-        _, adj_p, _, _ = multitest.multipletests(
-            pvals=[p_base_middle, p_base_final, p_middle_final],
-            alpha=0.05,
-            method="bonferroni",
-        )
+    if adjust:
+        if all_pair:
+            _, adj_p, _, _ = multitest.multipletests(
+                pvals=[p_base_middle, p_base_final, p_middle_final],
+                alpha=0.05,
+                method="bonferroni",
+            )
+
+        else:
+            _, adj_p, _, _ = multitest.multipletests(
+                pvals=[p_base_middle, p_base_final], alpha=0.05, method="bonferroni",
+            )
+
+        return adj_p[0], adj_p[1]
 
     else:
-        _, adj_p, _, _ = multitest.multipletests(
-            pvals=[p_base_middle, p_base_final], alpha=0.05, method="bonferroni",
-        )
-
-    return adj_p[0], adj_p[1]
+        return p_base_middle, p_base_final
 
 
 def delta_xy(df, colx, coly, delta):
@@ -250,8 +254,12 @@ def correlation(df, colx, coly, delta):
 
     xs, ys = delta_xy(df, colx, coly, delta)
 
+    mask = ~np.isnan(xs) & ~np.isnan(ys)
+
     tau, p = stats.kendalltau(
-        xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+        # xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+        xs[mask].astype(np.float),
+        ys[mask].astype(np.float),
     )
 
     return tau, p
@@ -327,6 +335,9 @@ def make_intersection(df, reports):
 
 
 def write_time_significant_report(file_name, title, report):
+    spaces = "  "
+    multiplier = 2
+
     if not os.path.exists("reports"):
         os.makedirs("reports", exist_ok=True)
 
@@ -335,7 +346,7 @@ def write_time_significant_report(file_name, title, report):
         f.write("\n")
         for r in report:
             f.write(f"{r[0].strip()}\n")
-            f.write(f"{r[1]:.19f}\n")
+            f.write(f"{spaces * multiplier * 1}P: {r[1]:.19f}\n")
             f.write("\n")
 
 
@@ -482,7 +493,6 @@ def plot_group(
     linewidth=2,
     title="",
     title_size=14,
-    remove_outliers=True,
 ):
 
     prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=title_size)
@@ -490,11 +500,6 @@ def plot_group(
     xs = df[df["measure"] == "0w"][col].astype(np.float).copy().reset_index(drop=True)
     ys = df[df["measure"] == "6w"][col].astype(np.float).copy().reset_index(drop=True)
     zs = df[df["measure"] == "12w"][col].astype(np.float).copy().reset_index(drop=True)
-
-    if remove_outliers:
-        remove_outliers_series(xs)
-        remove_outliers_series(ys)
-        remove_outliers_series(zs)
 
     vs = pd.DataFrame(
         {
@@ -584,22 +589,17 @@ def plot_group(
 
 
 def plot_correlation(
-    df,
-    colx,
-    coly,
-    delta,
-    ax=None,
-    pointsize=50,
-    linewidth=2,
-    labelsize=14,
-    remove_outliers=True,
+    df, colx, coly, delta, ax=None, pointsize=50, linewidth=2, labelsize=14,
 ):
     prop = fm.FontProperties(fname="fonts/Kosugi/Kosugi-Regular.ttf", size=labelsize)
 
     xs, ys = delta_xy(df, colx, coly, delta)
+    mask = ~np.isnan(xs.reset_index(drop=True)) & ~np.isnan(ys.reset_index(drop=True))
 
     tau, p = stats.kendalltau(
-        xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+        # xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+        xs[mask].astype(np.float),
+        ys[mask].astype(np.float),
     )
 
     maxy = ys.max()
@@ -608,11 +608,6 @@ def plot_correlation(
     ry = maxy - miny
     ryratio = 0.2
 
-    if remove_outliers:
-        remove_outliers_series(xs)
-        remove_outliers_series(ys)
-
-    mask = ~np.isnan(xs.reset_index(drop=True)) & ~np.isnan(ys.reset_index(drop=True))
     s, i, _, _, _ = stats.linregress(xs[mask], ys[mask])
 
     xl = np.linspace(xs.min(), xs.max())
@@ -661,18 +656,12 @@ def plot_correlation(
 
 
 def plot_group_set(
-    df,
-    output,
-    intersection,
-    num_rows=3,
-    num_cols=2,
-    point_size=10,
-    remove_outliers=True,
+    df, cols, output, num_rows=3, num_cols=2, point_size=10,
 ):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
 
-    num_plots = len(intersection)
+    num_plots = len(cols)
     num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
 
     r = 0
@@ -683,7 +672,7 @@ def plot_group_set(
 
     print(num_plots)
 
-    for i, col in enumerate(list(intersection)):
+    for i, col in enumerate(list(cols)):
         if i % int(num_rows * num_cols) == 0:
             if i != 0:
                 print(f"save at {i}")
@@ -701,12 +690,7 @@ def plot_group_set(
             c = 0
 
         plot_group(
-            df,
-            col,
-            ax=axes[r, c],
-            title=col,
-            point_size=point_size,
-            remove_outliers=remove_outliers,
+            df, col, ax=axes[r, c], title=col, point_size=point_size,
         )
 
         c += 1
@@ -728,20 +712,22 @@ def plot_group_set(
 
 def plot_correlation_set(
     df,
-    output,
-    cols,
+    colxs,
+    colys,
     delta,
+    output,
+    same_column=False,
     num_rows=3,
     num_cols=2,
     point_size=60,
-    remove_outliers=True,
 ):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
 
     # assert delta in (None, "fb", "mb", "mbfb", "bbmbfb")
 
-    num_plots = len(list(combinations(list(cols), 2)))
+    # num_plots = len(list(combinations(list(cols), 2)))
+    num_plots = len(list(combinations(set(colxs).union(set(colys)), 2)))
     num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
 
     r = 0
@@ -755,14 +741,17 @@ def plot_correlation_set(
     print(num_plots)
 
     repeated = set()
-    for colx in cols:
-        for coly in cols:
+    # for colx in cols:
+    # for coly in cols:
+    for colx in colxs:
+        for coly in colys:
 
-            if delta == "bfb":
-                if colx != coly:
+            # if delta == "bfb":
+            if same_column == True:
+                if colx == coly:
                     continue
             else:
-                if colx == coly:
+                if colx != coly:
                     continue
 
             if f"{colx}_{coly}" in repeated or f"{coly}_{colx}" in repeated:
@@ -793,13 +782,7 @@ def plot_correlation_set(
                 c = 0
 
             plot_correlation(
-                df,
-                coly,
-                colx,
-                delta,
-                ax=axes[r, c],
-                pointsize=point_size,
-                remove_outliers=remove_outliers,
+                df, coly, colx, delta, ax=axes[r, c], pointsize=point_size,
             )
 
             c += 1

@@ -1,6 +1,7 @@
 ##################################################
 
 import importlib
+import math
 import os
 
 import numpy as np
@@ -10,8 +11,17 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import utils
 from utils import clean_data, test_data_na
+import scipy.stats as stats
+
+import fun.plot.utils as pu
 
 matplotlib.use("gtk3agg")
+
+
+##################################################
+
+REMOVE_OUTLIERS = False
+# REMOVE_OUTLIERS = True
 
 
 ##################################################
@@ -96,13 +106,13 @@ drops = ["ID", "measure"]
 
 ##################################################
 
-for col in df.columns[17:]:
-    if col in drops:
-        continue
+if REMOVE_OUTLIERS:
+    print("REMOVING OUTLIERS.....")
+    for col in df.columns[17:]:
+        if col in drops:
+            continue
 
-    utils.remove_outliers_dataframe(df, col)
-
-##################################################
+        utils.remove_outliers_dataframe(df, col)
 
 
 ##################################################
@@ -129,6 +139,7 @@ for col in df.columns:
         report_multiple.append([col, p])
 
     bmp, bfp = utils.significant_test_pair(df, col)
+
     if bmp <= 0.05:
         report_pair_bm.append([col, bmp])
     if bfp <= 0.05:
@@ -144,6 +155,79 @@ for col in df.columns:
 # report_multiple.sort(key=lambda x: x[1])
 # report_pair_bm.sort(key=lambda x: x[1])
 # report_pair_bf.sort(key=lambda x: x[1])
+
+##################################################
+
+mri = pd.read_csv("mri.csv")
+mri = mri.drop("No.", axis=1)
+
+##################################################
+
+if REMOVE_OUTLIERS:
+    print("REMOVING OUTLIERS.....")
+    for col in mri.columns:
+        if col in ["ID"]:
+            continue
+
+        utils.remove_outliers_dataframe(mri, col)
+
+##################################################
+
+mri.loc[:, "delta"] = mri["MRI_Neutral-2"] - mri["MRI_Neutral-1"]
+mri.head()
+
+##################################################
+
+mask = ~np.isnan(mri["MRI_Neutral-2"]) & ~np.isnan(mri["MRI_Neutral-1"])
+_, p_mri = stats.wilcoxon(
+    # mri["MRI_Neutral-2"], mri["MRI_Neutral-1"]
+    mri.loc[mask, "MRI_Neutral-2"],
+    mri.loc[mask, "MRI_Neutral-1"],
+)
+p_mri
+
+##################################################
+
+wilcoxon_report = []
+wilcoxon_bonferroni_report = []
+
+if p_mri <= 0.05:
+    wilcoxon_report.append(["MRI_Neutral", p_mri])
+    # wilcoxon_bonferroni_report.append(["MRI_Neutral", p_mri])
+
+for col in df.columns:
+    if col in drops:
+        continue
+
+    bmp, bfp = utils.significant_test_pair(df, col, adjust=True)
+    if bfp <= 0.05:
+        wilcoxon_bonferroni_report.append([col, bfp])
+
+    bmp, bfp = utils.significant_test_pair(df, col, adjust=False)
+    if bfp <= 0.05:
+        wilcoxon_report.append([col, bfp])
+
+##################################################
+
+utils.write_time_significant_report(
+    "Wilcoxon_Bonferroni_0W_vs_12W.txt",
+    "Wilcoxon X Bonferroni (0W vs 12W)",
+    wilcoxon_bonferroni_report,
+)
+
+utils.write_time_significant_report(
+    "Wilcoxon_0W_vs_12W.txt", "Wilcoxon (0W vs 12W)", wilcoxon_report,
+)
+
+utils.plot_group_set(
+    df,
+    [r[0] for r in wilcoxon_bonferroni_report],
+    "charts/Wilcoxon_Bonferroni/Wilcoxon_Bonferroni_0W_vs_12W",
+)
+
+utils.plot_group_set(
+    df, [r[0] for r in wilcoxon_report], "charts/Wilcoxon/Wilcoxon_0W_vs_12W",
+)
 
 ##################################################
 
@@ -164,7 +248,98 @@ additional_cols = [
     utils.find_col(df, ["reuteri"]),
 ]
 
+additional_cols.sort(key=lambda x: list(df.columns).index(x))
 additional_cols
+
+##################################################
+
+# col = utils.find_col(df, ["total", "lacto"])
+
+
+r = 0
+c = 0
+
+f = None
+plotted = 0
+
+i = 0
+
+num_rows = 3
+num_cols = 2
+
+num_plots = len(additional_cols)
+num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
+plotted = 0
+
+output = "charts/MRI_Neutral"
+
+font_src = "fonts/Kosugi/Kosugi-Regular.ttf"
+
+if not os.path.exists(output):
+    os.makedirs(output, exist_ok=True)
+
+
+for col in additional_cols:
+    mask = df["ID"].isin(mri["ID"])
+
+    xs = df[mask & (df["measure"] == "12w")][col].reset_index(drop=True) - df[
+        mask & (df["measure"] == "0w")
+    ][col].reset_index(drop=True)
+
+    ys = mri["delta"].reset_index(drop=True)
+
+    mask = ~np.isnan(xs) & ~np.isnan(ys)
+
+    tau, p = stats.kendalltau(
+        # xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+        xs[mask].astype(np.float),
+        ys[mask].astype(np.float),
+    )
+
+    # if p > 0.05 or abs(tau) < 0.2:
+    # continue
+    # if math.isnan(p) or math.isnan(tau):
+    # continue
+
+    if i % int(num_rows * num_cols) == 0:
+        if i != 0:
+            print(f"save at {i}")
+            plt.tight_layout()
+            f.savefig(
+                os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+                facecolor="w",
+            )
+            plt.close(f)
+
+            plotted += 1
+
+        f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 30))
+        r = 0
+        c = 0
+
+    pu.plot_correlation(
+        xs, ys, ax=axes[r, c], xlabel=col, ylabel="MRI_Neutral", font_src=font_src
+    )
+
+    c += 1
+    if c % num_cols == 0:
+        r += 1
+        c = 0
+
+    i += 1
+
+if plotted != num_pages:
+    plt.tight_layout()
+    f.savefig(
+        os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+        facecolor="w",
+    )
+    plt.close(f)
+    plotted += 1
+
+print(f"total {plotted} charts")
+
+##################################################
 
 
 significant_cols = set(r[0] for r in report_multiple).intersection(
@@ -316,6 +491,9 @@ for col in df.columns:
     if col in drops:
         continue
 
+    if col not in significant_cols:
+        continue
+
     tau, p = utils.correlation(df, col, col, delta="bfb")
     if p <= p_threshold and abs(tau) >= tau_threshold:
         delta_corr_bfb.append([col, p, tau])
@@ -373,15 +551,10 @@ intersection = set(r[0] for r in report_multiple).intersection(
 
 intersection = utils.make_intersection(df, intersection)
 
-# utils.plot_group_set(
-# df, "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W", intersection, remove_outliers=True,
-# )
-
 utils.plot_group_set(
     df,
-    "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W",
-    intersection,
-    remove_outliers=False,
+    cols=intersection,
+    output="charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_6W",
 )
 
 
@@ -391,43 +564,43 @@ intersection = set(r[0] for r in report_multiple).intersection(
 
 intersection = utils.make_intersection(df, intersection)
 
-# utils.plot_group_set(
-# df, "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W", intersection, remove_outliers=True,
-# )
 
 utils.plot_group_set(
     df,
-    "charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W",
-    intersection,
-    remove_outliers=False,
+    cols=intersection,
+    output="charts/Friedman_X_Wilcoxon/Friedman_X_Wilcoxon_0W_vs_12W",
 )
 
 ##################################################
-
-# utils.plot_correlation_set(df, "charts/Kendall_Delta_6W", significant_cols, delta="mb", remove_outliers=True)
-# utils.plot_correlation_set(
-# df, "charts/Kendall_Delta_12W", significant_cols, delta="fb", remove_outliers=True
-# )
-
-utils.plot_correlation_set(
-    df, "charts/Kendall_Delta_6W", significant_cols, delta="mb", remove_outliers=False
-)
-utils.plot_correlation_set(
-    df, "charts/Kendall_Delta_12W", significant_cols, delta="fb", remove_outliers=False
-)
-
-##################################################
-
-# utils.plot_correlation_set(
-# df, "charts/Kendall_Delta_0W_VS_12W_0W", significant_cols, delta="bfb", remove_outliers =True,
-# )
 
 utils.plot_correlation_set(
     df,
-    "charts/Kendall_Delta_0W_VS_12W_0W",
-    significant_cols,
+    colxs=significant_cols,
+    colys=significant_cols,
+    delta="mb",
+    output="charts/Kendall_Delta_6W",
+    same_column=False,
+)
+
+utils.plot_correlation_set(
+    df,
+    colxs=significant_cols,
+    colys=significant_cols,
+    delta="fb",
+    output="charts/Kendall_Delta_12W",
+    same_column=False,
+)
+
+##################################################
+
+
+utils.plot_correlation_set(
+    df,
+    colxs=significant_cols,
+    colys=significant_cols,
     delta="bfb",
-    remove_outliers=False,
+    output="charts/Kendall_Delta_0W_VS_12W_0W",
+    same_column=True,
 )
 
 ##################################################
