@@ -334,14 +334,14 @@ def make_intersection(df, reports):
     return intersection
 
 
-def write_time_significant_report(file_name, title, report):
+def write_time_significant_report(filepath, title, report):
     spaces = "  "
     multiplier = 2
 
-    if not os.path.exists("reports"):
-        os.makedirs("reports", exist_ok=True)
+    if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    with open(f"reports/{file_name}", "w", encoding="utf-8") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"{title}: {len(report)} features\n")
         f.write("\n")
         for r in report:
@@ -350,14 +350,14 @@ def write_time_significant_report(file_name, title, report):
             f.write("\n")
 
 
-def write_friedman_wilcoxon_report(file_name, title, friedman_report, wilcoxon_report):
+def write_friedman_wilcoxon_report(filepath, title, friedman_report, wilcoxon_report):
     spaces = "  "
     multiplier = 2
 
-    if not os.path.exists("reports"):
-        os.makedirs("reports", exist_ok=True)
+    if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    with open(f"reports/{file_name}", "w", encoding="utf-8",) as f:
+    with open(filepath, "w", encoding="utf-8",) as f:
         intersection = set(r[0] for r in friedman_report).intersection(
             set(r[0] for r in wilcoxon_report)
         )
@@ -383,15 +383,15 @@ def write_friedman_wilcoxon_report(file_name, title, friedman_report, wilcoxon_r
 
 
 def write_friedman_wilcoxon_kendall_report(
-    file_name, title, friedman_report, wilcoxon_report, kendall_report
+    filepath, title, friedman_report, wilcoxon_report, kendall_report
 ):
     spaces = "  "
     multiplier = 2
 
-    if not os.path.exists("reports"):
-        os.makedirs("reports", exist_ok=True)
+    if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    with open(f"reports/{file_name}", "w", encoding="utf-8") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         intersection = (
             set(r[0] for r in friedman_report)
             .intersection(set(r[0] for r in wilcoxon_report))
@@ -444,14 +444,14 @@ def write_friedman_wilcoxon_kendall_report(
                 f.write("\n")
 
 
-def write_kendall_delta_report(file_name, title, kendall_report):
+def write_kendall_delta_report(filepath, title, kendall_report):
     spaces = "  "
     multiplier = 2
 
-    if not os.path.exists("reports"):
-        os.makedirs("reports", exist_ok=True)
+    if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    with open(f"reports/{file_name}", "w", encoding="utf-8",) as f:
+    with open(filepath, "w", encoding="utf-8",) as f:
         f.write(f"{title}: {len(kendall_report)} features")
         f.write("\n\n")
 
@@ -488,6 +488,7 @@ def plot_group(
     df,
     col,
     ax=None,
+    adjust=True,
     point_size=6,
     linelength=0.7,
     linewidth=2,
@@ -512,7 +513,7 @@ def plot_group(
         }
     )
 
-    p_base_middle, p_base_final = significant_test_pair(df, col)
+    p_base_middle, p_base_final = significant_test_pair(df, col, adjust=adjust)
 
     maxy = df[col].max()
     miny = df[col].min()
@@ -656,7 +657,7 @@ def plot_correlation(
 
 
 def plot_group_set(
-    df, cols, output, num_rows=3, num_cols=2, point_size=10,
+    df, cols, output, num_rows=3, num_cols=2, point_size=10, adjust=True,
 ):
     if not os.path.exists(output):
         os.makedirs(output, exist_ok=True)
@@ -668,46 +669,51 @@ def plot_group_set(
     c = 0
 
     f = None
-    plotted = 0
+    plotted_page = 0
+    plotted_chart = 0
 
-    print(num_plots)
+    # print(num_plots)
 
     for i, col in enumerate(list(cols)):
         if i % int(num_rows * num_cols) == 0:
             if i != 0:
-                print(f"save at {i}")
+                # print(f"save at {i}")
                 plt.tight_layout()
                 f.savefig(
-                    os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+                    os.path.join(
+                        output, f"{os.path.basename(output)}_{plotted_page}.png",
+                    ),
                     facecolor="w",
                 )
                 plt.close(f)
 
-                plotted += 1
+                plotted_page += 1
 
             f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 30))
             r = 0
             c = 0
 
         plot_group(
-            df, col, ax=axes[r, c], title=col, point_size=point_size,
+            df, col, ax=axes[r, c], title=col, point_size=point_size, adjust=adjust,
         )
+
+        plotted_chart += 1
 
         c += 1
         if c % num_cols == 0:
             r += 1
             c = 0
 
-    if plotted != num_pages:
+    if plotted_page != num_pages:
         plt.tight_layout()
         f.savefig(
-            os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+            os.path.join(output, f"{os.path.basename(output)}_{plotted_page}.png",),
             facecolor="w",
         )
         plt.close(f)
-        plotted += 1
+        plotted_page += 1
 
-    print(f"total {plotted} charts")
+    print(f"total {plotted_chart} charts, {plotted_page} pages")
 
 
 def plot_correlation_set(
@@ -727,18 +733,19 @@ def plot_correlation_set(
     # assert delta in (None, "fb", "mb", "mbfb", "bbmbfb")
 
     # num_plots = len(list(combinations(list(cols), 2)))
-    num_plots = len(list(combinations(set(colxs).union(set(colys)), 2)))
-    num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
+    # num_plots = len(list(combinations(set(colxs).union(set(colys)), 2)))
+    # num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
 
     r = 0
     c = 0
 
     f = None
-    plotted = 0
+    plotted_page = 0
+    plotted_chart = 0
 
     i = 0
 
-    print(num_plots)
+    # print(num_plots)
 
     repeated = set()
     # for colx in cols:
@@ -746,12 +753,11 @@ def plot_correlation_set(
     for colx in colxs:
         for coly in colys:
 
-            # if delta == "bfb":
             if same_column == True:
-                if colx == coly:
+                if colx != coly:
                     continue
             else:
-                if colx != coly:
+                if colx == coly:
                     continue
 
             if f"{colx}_{coly}" in repeated or f"{coly}_{colx}" in repeated:
@@ -765,17 +771,17 @@ def plot_correlation_set(
 
             if i % int(num_rows * num_cols) == 0:
                 if i != 0:
-                    print(f"save at {i}")
+                    # print(f"save at {i}")
                     plt.tight_layout()
                     f.savefig(
                         os.path.join(
-                            output, f"{os.path.basename(output)}_{plotted}.png",
+                            output, f"{os.path.basename(output)}_{plotted_page}.png",
                         ),
                         facecolor="w",
                     )
                     plt.close(f)
 
-                    plotted += 1
+                    plotted_page += 1
 
                 f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 30))
                 r = 0
@@ -785,6 +791,8 @@ def plot_correlation_set(
                 df, coly, colx, delta, ax=axes[r, c], pointsize=point_size,
             )
 
+            plotted_chart += 1
+
             c += 1
             if c % num_cols == 0:
                 r += 1
@@ -793,13 +801,14 @@ def plot_correlation_set(
             i += 1
             repeated.add(f"{colx}_{coly}")
 
-    if plotted != num_pages:
+    if plotted_chart > (num_cols * num_rows) * plotted_page:
         plt.tight_layout()
         f.savefig(
-            os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+            os.path.join(output, f"{os.path.basename(output)}_{plotted_page}.png",),
             facecolor="w",
         )
         plt.close(f)
-        plotted += 1
 
-    print(f"total {plotted} charts")
+        plotted_page += 1
+
+    print(f"total {plotted_chart} charts, {plotted_page} pages")
