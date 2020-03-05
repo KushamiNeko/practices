@@ -15,6 +15,7 @@ from utils import clean_data, test_data_na
 
 matplotlib.use("gtk3agg")
 
+font_src = "fonts/Kosugi/Kosugi-Regular.ttf"
 
 ##################################################
 
@@ -123,13 +124,86 @@ df = df.reset_index(drop=True)
 
 ##################################################
 
-# col = utils.find_col(df, ["total", "lact"])
-# c = df.loc[df["measure"] == "0w", col]
+hamd_delta = df[df["measure"] == "12w"]["HAMD"].reset_index(drop=True) - df[
+    df["measure"] == "0w"
+]["HAMD"].reset_index(drop=True)
 
-# print(c.quantile(0.25))
-# print(c.quantile(0.75))
-# utils.plot_correlation(df, col, col, delta="bfb")
-# plt.show()
+hamd_delta
+
+
+##################################################
+
+auc = []
+col = utils.find_col(df, ["total", "lac"])
+
+# print(col)
+
+# print(
+# [
+# df[df["measure"] == "0w"][col].iloc[0],
+# df[df["measure"] == "6w"][col].iloc[0],
+# df[df["measure"] == "12w"][col].iloc[0],
+# ]
+# )
+
+for i in range(len(df[df["measure"] == "0w"])):
+    ys = [
+        df[df["measure"] == "0w"][col].iloc[i],
+        df[df["measure"] == "6w"][col].iloc[i],
+        df[df["measure"] == "12w"][col].iloc[i],
+    ]
+
+    auc.append(np.trapz(ys, dx=6.0))
+
+auc = pd.Series(auc)
+auc
+
+
+##################################################
+
+
+num_rows = 2
+num_cols = 2
+
+f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 20))
+
+col = utils.find_col(df, ["weight"])
+
+utils.plot_group(df, col, ax=axes[0, 0], adjust=False, title=col)
+
+col = utils.find_col(df, ["crp"])
+
+utils.plot_group(df, col, ax=axes[0, 1], adjust=False, title=col)
+
+col = utils.find_col(df, ["total", "lac"])
+
+pu.plot_correlation(
+    xs=df[df["measure"] == "0w"][col],
+    ys=hamd_delta,
+    ax=axes[1, 0],
+    xlabel=f"{col} (0W)",
+    ylabel=f"HAMD (12W - 0W)",
+    font_src=font_src,
+)
+
+pu.plot_correlation(
+    xs=auc,
+    ys=hamd_delta,
+    ax=axes[1, 1],
+    xlabel=f"{col} (AUC)",
+    ylabel=f"HAMD (12W - 0W)",
+    font_src=font_src,
+)
+
+
+plt.tight_layout()
+
+f.savefig(
+    f"charts/0.png", facecolor="w",
+)
+
+plt.close(f)
+
 
 ##################################################
 
@@ -288,88 +362,89 @@ significant_cols
 # col = utils.find_col(df, ["total", "lacto"])
 
 
-# r = 0
-# c = 0
-#
-# f = None
-# plotted = 0
-#
-# i = 0
-#
-# num_rows = 3
-# num_cols = 2
-#
-# num_plots = len(additional_cols)
-# num_pages = int(math.ceil(float(num_plots) / float(num_rows * num_cols)))
-# plotted = 0
-#
-# output = "charts/MRI_Neutral"
-#
-# font_src = "fonts/Kosugi/Kosugi-Regular.ttf"
-#
-# if not os.path.exists(output):
-#     os.makedirs(output, exist_ok=True)
-#
-#
-# for col in additional_cols:
-#     mask = df["ID"].isin(mri["ID"])
-#
-#     xs = df[mask & (df["measure"] == "12w")][col].reset_index(drop=True) - df[
-#         mask & (df["measure"] == "0w")
-#     ][col].reset_index(drop=True)
-#
-#     ys = mri["delta"].reset_index(drop=True)
-#
-#     mask = ~np.isnan(xs) & ~np.isnan(ys)
-#
-#     tau, p = stats.kendalltau(
-#         # xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
-#         xs[mask].astype(np.float),
-#         ys[mask].astype(np.float),
-#     )
-#
-#     # if p > 0.05 or abs(tau) < 0.2:
-#     # continue
-#     # if math.isnan(p) or math.isnan(tau):
-#     # continue
-#
-#     if i % int(num_rows * num_cols) == 0:
-#         if i != 0:
-#             print(f"save at {i}")
-#             plt.tight_layout()
-#             f.savefig(
-#                 os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
-#                 facecolor="w",
-#             )
-#             plt.close(f)
-#
-#             plotted += 1
-#
-#         f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 30))
-#         r = 0
-#         c = 0
-#
-#     pu.plot_correlation(
-#         xs, ys, ax=axes[r, c], xlabel=col, ylabel="MRI_Neutral", font_src=font_src
-#     )
-#
-#     c += 1
-#     if c % num_cols == 0:
-#         r += 1
-#         c = 0
-#
-#     i += 1
-#
-# if plotted != num_pages:
-#     plt.tight_layout()
-#     f.savefig(
-#         os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
-#         facecolor="w",
-#     )
-#     plt.close(f)
-#     plotted += 1
-#
-# print(f"total {plotted} charts")
+r = 0
+c = 0
+
+f = None
+plotted = 0
+
+i = 0
+
+num_rows = 3
+num_cols = 2
+
+plotted_page = 0
+plotted_chart = 0
+
+output = f"{output_root}/charts/MRI_Neutral"
+
+font_src = "fonts/Kosugi/Kosugi-Regular.ttf"
+
+if not os.path.exists(output):
+    os.makedirs(output, exist_ok=True)
+
+
+for col in additional_cols:
+    mask = df["ID"].isin(mri["ID"])
+
+    xs = df[mask & (df["measure"] == "12w")][col].reset_index(drop=True) - df[
+        mask & (df["measure"] == "0w")
+    ][col].reset_index(drop=True)
+
+    ys = mri["delta"].reset_index(drop=True)
+
+    mask = ~np.isnan(xs) & ~np.isnan(ys)
+
+    tau, p = stats.kendalltau(
+        # xs.astype(np.float), ys.astype(np.float), nan_policy="omit"
+        xs[mask].astype(np.float),
+        ys[mask].astype(np.float),
+    )
+
+    if p > 0.05 or abs(tau) < 0.2:
+        continue
+    if math.isnan(p) or math.isnan(tau):
+        continue
+
+    if i % int(num_rows * num_cols) == 0:
+        if i != 0:
+            print(f"save at {i}")
+            plt.tight_layout()
+            f.savefig(
+                os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+                facecolor="w",
+            )
+            plt.close(f)
+
+            plotted_page += 1
+
+        f, axes = plt.subplots(num_rows, num_cols, figsize=(20, 30))
+        r = 0
+        c = 0
+
+    pu.plot_correlation(
+        xs, ys, ax=axes[r, c], xlabel=col, ylabel="MRI_Neutral", font_src=font_src
+    )
+
+    plotted_chart += 1
+
+    c += 1
+    if c % num_cols == 0:
+        r += 1
+        c = 0
+
+    i += 1
+
+if plotted_chart > (num_rows * num_cols) * plotted_page:
+    plt.tight_layout()
+    f.savefig(
+        os.path.join(output, f"{os.path.basename(output)}_{plotted}.png",),
+        facecolor="w",
+    )
+    plt.close(f)
+    plotted_page += 1
+
+print(f"total {plotted_chart} charts, {plotted_page} pages")
 
 ##################################################
 
