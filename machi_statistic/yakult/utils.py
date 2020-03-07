@@ -812,3 +812,34 @@ def plot_correlation_set(
         plotted_page += 1
 
     print(f"total {plotted_chart} charts, {plotted_page} pages")
+
+
+def week_delta(df, col, op="fb"):
+
+    assert op in ("fb", "mb")
+
+    start = "12w"
+    if op == "mb":
+        start = "6w"
+
+    delta = df[df["measure"] == start][col].reset_index(drop=True) - df[
+        df["measure"] == "0w"
+    ][col].reset_index(drop=True)
+
+    return delta
+
+
+def auc(df, col, dx=6):
+
+    auc = []
+
+    for i in range(len(df[df["measure"] == "0w"])):
+        ys = [
+            df[df["measure"] == "0w"][col].iloc[i],
+            df[df["measure"] == "6w"][col].iloc[i],
+            df[df["measure"] == "12w"][col].iloc[i],
+        ]
+
+        auc.append(np.trapz(ys, dx=dx))
+
+    return pd.Series(auc)
